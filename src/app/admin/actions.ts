@@ -1,0 +1,62 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth";
+
+export async function validerDocument(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const documentId = String(formData.get("document_id") ?? "");
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const statut = String(formData.get("statut") ?? "");
+  const type = String(formData.get("type") ?? "");
+
+  await supabase.from("professional_documents").update({ statut }).eq("id", documentId);
+
+  if (type === "casier") {
+    await supabase
+      .from("professional_profiles")
+      .update({ statut_verification_casier: statut })
+      .eq("user_id", professionalId);
+  }
+
+  revalidatePath(`/admin/professionnels/${professionalId}`);
+}
+
+export async function validerQualificationXtra(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const statut = String(formData.get("statut") ?? "");
+
+  await supabase
+    .from("professional_qualification_xtra")
+    .update({ statut })
+    .eq("professional_id", professionalId);
+
+  revalidatePath(`/admin/professionnels/${professionalId}`);
+}
+
+export async function toggleBadge(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const badgeCode = String(formData.get("badge_code") ?? "");
+  const coche = formData.get("coche") === "true";
+
+  if (coche) {
+    await supabase.from("professional_badges").insert({
+      professional_id: professionalId,
+      badge_code: badgeCode,
+      attribue_par: user.id,
+    });
+  } else {
+    await supabase
+      .from("professional_badges")
+      .delete()
+      .eq("professional_id", professionalId)
+      .eq("badge_code", badgeCode);
+  }
+
+  revalidatePath(`/admin/professionnels/${professionalId}`);
+}
