@@ -6,6 +6,7 @@ import { DocumentUploadForm } from "./DocumentUploadForm";
 import { QualificationXtraForm } from "./QualificationXtraForm";
 import { PhotosManager } from "./PhotosManager";
 import { PromptsManager } from "./PromptsManager";
+import { SoumettreDossierForm } from "./SoumettreDossierForm";
 import type { DocumentType } from "./actions";
 
 export default async function ProfilProfessionnelPage() {
@@ -117,6 +118,8 @@ export default async function ProfilProfessionnelPage() {
       <PromptsManager prompts={prompts ?? []} />
 
       <QualificationXtraForm qualification={qualification} />
+
+      <SoumettreDossierForm />
     </div>
   );
 }

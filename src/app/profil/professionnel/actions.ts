@@ -5,7 +5,34 @@ import { requireUser } from "@/lib/auth";
 import { parseDisponibilitesFromFormData } from "@/lib/disponibilites";
 import { geocodeAdresse } from "@/lib/geocoding";
 
-export type ProfilFormState = { error?: string; success?: boolean } | undefined;
+export type ProfilFormState =
+  | { error?: string; success?: boolean; dossierComplet?: boolean }
+  | undefined;
+
+async function documentsManquants(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  professionalId: string,
+) {
+  const [{ data: documents }, { data: qualification }] = await Promise.all([
+    supabase.from("professional_documents").select("type").eq("professional_id", professionalId),
+    supabase
+      .from("professional_qualification_xtra")
+      .select("declare_qualifie, fichier_url")
+      .eq("professional_id", professionalId)
+      .maybeSingle(),
+  ]);
+
+  const typesDeposes = new Set((documents ?? []).map((d) => d.type));
+  const manquants: string[] = [];
+
+  if (!typesDeposes.has("casier")) manquants.push("le bulletin n°3 du casier judiciaire");
+  if (!typesDeposes.has("cv")) manquants.push("le CV");
+  if (qualification?.declare_qualifie && !qualification.fichier_url) {
+    manquants.push("le justificatif Xtras");
+  }
+
+  return manquants;
+}
 
 export async function updateProfessionalProfile(
   _prevState: ProfilFormState,
@@ -40,6 +67,22 @@ export async function updateProfessionalProfile(
 
   revalidatePath("/profil/professionnel");
   return { success: true };
+}
+
+export async function soumettreDossier(
+  _prevState: ProfilFormState,
+  _formData: FormData,
+): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const manquants = await documentsManquants(supabase, user.id);
+  if (manquants.length > 0) {
+    return {
+      error: `Ton dossier n'est pas encore complet : il manque ${manquants.join(", ")}.`,
+    };
+  }
+
+  return { success: true, dossierComplet: true };
 }
 
 const DOCUMENT_TYPES = ["casier", "cv", "diplome", "certificat", "photo_logement"] as const;
