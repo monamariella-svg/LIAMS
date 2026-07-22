@@ -19,7 +19,7 @@ export async function ajouterCreneau(
   const heureFin = String(formData.get("heure_fin") ?? "");
   const statut = String(formData.get("statut") ?? "libre");
 
-  if (!date || !heureDebut || !heureFin) return { error: "Renseigne la date et les horaires." };
+  if (!date || !heureDebut || !heureFin) return { error: "Renseignez la date et les horaires." };
 
   const { error } = await supabase.from("availability_slots").insert({
     professional_id: user.id,

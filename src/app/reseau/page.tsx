@@ -42,7 +42,7 @@ export default async function ReseauPage() {
       {(reseaux ?? []).length === 0 && (
         <p className="text-sm text-gray-500">
           {isParent
-            ? "Aucun professionnel dans ton réseau — ajoute-en un depuis une conversation."
+            ? "Aucun professionnel dans votre réseau — ajoutez-en un depuis une conversation."
             : "Aucune demande de réseau pour le moment."}
         </p>
       )}

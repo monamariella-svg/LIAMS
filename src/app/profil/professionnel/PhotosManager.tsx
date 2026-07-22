@@ -28,7 +28,7 @@ export function PhotosManager({
         Mes photos ({photos.length}/{NB_PHOTOS_MAX})
       </h2>
       <p className="mt-1 text-xs text-gray-500">
-        Affichées en carrousel en tête de ton profil public.
+        Affichées en carrousel en tête de votre profil public.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-3">

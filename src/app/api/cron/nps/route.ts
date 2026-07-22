@@ -38,8 +38,8 @@ export async function GET(request: Request) {
 
     await sendEmail({
       to: utilisateur.email,
-      subject: "Ton avis compte — questionnaire Liams (2 minutes)",
-      html: `<p>Tu utilises Liams depuis quelques semaines : dis-nous ce que tu en penses !</p><p><a href="${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/feedback">Répondre au questionnaire</a></p>`,
+      subject: "Votre avis compte — questionnaire Liams (2 minutes)",
+      html: `<p>Vous utilisez Liams depuis quelques semaines : dites-nous ce que vous en pensez !</p><p><a href="${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/feedback">Répondre au questionnaire</a></p>`,
     });
   }
 

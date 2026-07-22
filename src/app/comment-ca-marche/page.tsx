@@ -33,7 +33,7 @@ function PourTous() {
       </p>
       <ol className="flex flex-col gap-4">
         <Etape numero={1} titre="Créer un compte">
-          Parent ou professionnel, inscris-toi en quelques minutes.
+          Parent ou professionnel, inscrivez-vous en quelques minutes.
         </Etape>
         <Etape numero={2} titre="Trouver le bon match">
           Recherche par disponibilité, proximité, et critères qualitatifs
@@ -61,21 +61,21 @@ function PourParents() {
     <>
       <h1 className="text-2xl font-semibold text-liams-navy">Pour les parents</h1>
       <ol className="flex flex-col gap-4">
-        <Etape numero={1} titre="Trouve rapidement un professionnel vérifié">
+        <Etape numero={1} titre="Trouvez rapidement un professionnel vérifié">
           Casier judiciaire vérifié, badges de compétences, avis d&apos;autres
           parents.
         </Etape>
-        <Etape numero={2} titre="Construis ton réseau personnel">
-          Ajoute tes professionnels de confiance et visualise leur planning en
-          temps réel.
+        <Etape numero={2} titre="Construisez votre réseau personnel">
+          Ajoutez vos professionnels de confiance et visualisez leur planning
+          en temps réel.
         </Etape>
         <Etape numero={3} titre="Garde d'urgence en un clic">
-          Réserve directement un créneau libre chez un professionnel de ton
-          réseau.
+          Réservez directement un créneau libre chez un professionnel de
+          votre réseau.
         </Etape>
         <Etape numero={4} titre="Un accompagnement pensé pour Les Xtras">
-          Filtre par spécialisation (TSA, TDAH, DYS, handicap moteur) et
-          partage un profil enrichi pour ton enfant.
+          Filtrez par spécialisation (TSA, TDAH, DYS, handicap moteur) et
+          partagez un profil enrichi pour votre enfant.
         </Etape>
       </ol>
       <Link href="/recherche" className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90">
@@ -90,16 +90,16 @@ function PourProfessionnels() {
     <>
       <h1 className="text-2xl font-semibold text-liams-navy">Pour les professionnels</h1>
       <ol className="flex flex-col gap-4">
-        <Etape numero={1} titre="Développe ton activité">
-          Reçois des demandes ciblées de familles proches de chez toi.
+        <Etape numero={1} titre="Développez votre activité">
+          Recevez des demandes ciblées de familles proches de chez vous.
         </Etape>
-        <Etape numero={2} titre="Valorise ton profil">
-          Photos, prompts, badges et avis mettent en avant ton expérience —
+        <Etape numero={2} titre="Valorisez votre profil">
+          Photos, prompts, badges et avis mettent en avant votre expérience —
           notamment auprès des Xtras.
         </Etape>
-        <Etape numero={3} titre="Gère ton planning simplement">
-          Déclare tes disponibilités, tes créneaux de garde d&apos;urgence, et
-          valide les réservations récurrentes.
+        <Etape numero={3} titre="Gérez votre planning simplement">
+          Déclarez vos disponibilités, vos créneaux de garde d&apos;urgence,
+          et validez les réservations récurrentes.
         </Etape>
       </ol>
       <Link href="/profil/professionnel" className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90">

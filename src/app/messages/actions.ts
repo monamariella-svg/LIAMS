@@ -76,7 +76,7 @@ export async function envoyerMessage(
 
   const matchId = String(formData.get("match_id") ?? "");
   const contenu = String(formData.get("contenu") ?? "").trim();
-  if (!contenu) return { error: "Écris un message avant d'envoyer." };
+  if (!contenu) return { error: "Écrivez un message avant d'envoyer." };
 
   const { error } = await supabase.from("messages").insert({
     match_id: matchId,
@@ -104,7 +104,7 @@ export async function laisserAvis(
   const note = Number(formData.get("note") ?? 0);
   const commentaire = String(formData.get("commentaire") ?? "").trim() || null;
 
-  if (note < 1 || note > 5) return { error: "Choisis une note entre 1 et 5." };
+  if (note < 1 || note > 5) return { error: "Choisissez une note entre 1 et 5." };
 
   const { data: match } = await supabase.from("matches").select("*").eq("id", matchId).maybeSingle();
   if (!match) return { error: "Mise en relation introuvable." };

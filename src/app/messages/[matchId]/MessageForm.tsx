@@ -16,7 +16,7 @@ export function MessageForm({ matchId }: { matchId: string }) {
       <input type="hidden" name="match_id" value={matchId} />
       <input
         name="contenu"
-        placeholder="Écris ton message..."
+        placeholder="Écrivez votre message..."
         required
         className="flex-1 rounded-full border border-gray-300 px-4 py-2 text-sm"
       />

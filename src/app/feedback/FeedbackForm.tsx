@@ -9,7 +9,7 @@ export function FeedbackForm({ feedbackId }: { feedbackId: string }) {
   if (state?.success) {
     return (
       <p className="rounded-xl bg-liams-teal/10 px-4 py-3 text-sm text-liams-teal">
-        Merci pour ton retour !
+        Merci pour votre retour !
       </p>
     );
   }

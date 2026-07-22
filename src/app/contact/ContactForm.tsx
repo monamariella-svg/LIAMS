@@ -15,7 +15,7 @@ export function ContactForm({
   if (state?.success) {
     return (
       <p className="rounded-xl bg-liams-teal/10 px-4 py-3 text-sm text-liams-teal">
-        Message envoyé — merci, nous te répondrons rapidement.
+        Message envoyé — merci, nous vous répondrons rapidement.
       </p>
     );
   }
@@ -26,7 +26,7 @@ export function ContactForm({
         name="nom"
         required
         defaultValue={nomInitial}
-        placeholder="Ton nom"
+        placeholder="Votre nom"
         className="rounded-lg border border-gray-300 px-4 py-2"
       />
       <input
@@ -34,14 +34,14 @@ export function ContactForm({
         type="email"
         required
         defaultValue={emailInitial}
-        placeholder="Ton email"
+        placeholder="Votre email"
         className="rounded-lg border border-gray-300 px-4 py-2"
       />
       <textarea
         name="message"
         required
         rows={5}
-        placeholder="Décris ton problème ou ta suggestion"
+        placeholder="Décrivez votre problème ou votre suggestion"
         className="rounded-lg border border-gray-300 px-4 py-2"
       />
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}

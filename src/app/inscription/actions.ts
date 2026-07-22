@@ -18,12 +18,12 @@ export async function signUp(
     return { error: "Email et mot de passe requis." };
   }
   if (role !== "parent" && role !== "professionnel") {
-    return { error: "Choisis un profil (parent ou professionnel)." };
+    return { error: "Choisissez un profil (parent ou professionnel)." };
   }
   if (!cguAcceptees) {
     return {
       error:
-        "Tu dois accepter les CGU et la politique de confidentialité pour créer un compte.",
+        "Vous devez accepter les CGU et la politique de confidentialité pour créer un compte.",
     };
   }
 

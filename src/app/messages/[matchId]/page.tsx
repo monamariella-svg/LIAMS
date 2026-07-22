@@ -62,7 +62,7 @@ export default async function ConversationPage({
           <span className="text-xs text-gray-500">Demande de réseau en attente</span>
         )}
         {isParent && reseauStatut === "accepte" && (
-          <span className="text-xs text-liams-teal">Dans ton réseau ✓</span>
+          <span className="text-xs text-liams-teal">Dans votre réseau ✓</span>
         )}
       </div>
 

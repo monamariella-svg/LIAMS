@@ -13,7 +13,7 @@ export default async function ContactPage() {
         Contact — Signaler un problème / Suggestion
       </h1>
       <p className="mt-2 text-sm text-gray-500">
-        Un souci, une idée d&apos;amélioration ? Écris-nous, on te lit.
+        Un souci, une idée d&apos;amélioration ? Écrivez-nous, on vous lit.
       </p>
       <div className="mt-6">
         <ContactForm emailInitial={user?.email} />

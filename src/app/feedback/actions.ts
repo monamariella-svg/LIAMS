@@ -19,7 +19,7 @@ export async function repondreFeedback(
   const feedbackId = String(formData.get("feedback_id") ?? "");
   const scoreNps = Number(formData.get("score_nps") ?? -1);
 
-  if (scoreNps < 0 || scoreNps > 10) return { error: "Choisis une note entre 0 et 10." };
+  if (scoreNps < 0 || scoreNps > 10) return { error: "Choisissez une note entre 0 et 10." };
 
   const reponsesComplementaires = {
     facilite_matching: String(formData.get("facilite_matching") ?? ""),

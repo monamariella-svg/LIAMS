@@ -24,7 +24,7 @@ function PromptForm({ prompt }: { prompt?: Prompt }) {
         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
       >
         <option value="" disabled>
-          Choisis une question...
+          Choisissez une question...
         </option>
         {PROMPTS_SUGGERES.map((q) => (
           <option key={q} value={q}>
@@ -36,7 +36,7 @@ function PromptForm({ prompt }: { prompt?: Prompt }) {
         name="reponse"
         required
         defaultValue={prompt?.reponse ?? ""}
-        placeholder="Ta réponse (courte)"
+        placeholder="Votre réponse (courte)"
         rows={2}
         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
       />
@@ -69,7 +69,7 @@ export function PromptsManager({ prompts }: { prompts: Prompt[] }) {
         Mes prompts ({prompts.length}/{NB_PROMPTS_MAX})
       </h2>
       <p className="mt-1 text-xs text-gray-500">
-        Choisis 3 à 5 questions et réponds-y brièvement — ça remplace la présentation textuelle classique.
+        Choisissez 3 à 5 questions et répondez-y brièvement — ça remplace la présentation textuelle classique.
       </p>
 
       <div className="mt-4 flex flex-col gap-3">

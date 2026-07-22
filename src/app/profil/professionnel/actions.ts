@@ -78,7 +78,7 @@ export async function soumettreDossier(
   const manquants = await documentsManquants(supabase, user.id);
   if (manquants.length > 0) {
     return {
-      error: `Ton dossier n'est pas encore complet : il manque ${manquants.join(", ")}.`,
+      error: `Votre dossier n'est pas encore complet : il manque ${manquants.join(", ")}.`,
     };
   }
 
@@ -98,7 +98,7 @@ export async function uploadDocument(
   if (!DOCUMENT_TYPES.includes(type)) return { error: "Type de document invalide." };
 
   const file = formData.get("fichier") as File | null;
-  if (!file || file.size === 0) return { error: "Choisis un fichier à téléverser." };
+  if (!file || file.size === 0) return { error: "Choisissez un fichier à téléverser." };
 
   const path = `${user.id}/${type}-${Date.now()}-${file.name}`;
 
@@ -151,7 +151,7 @@ export async function updateQualificationXtra(
 
   if (declareQualifie) {
     if (!typeJustificatif) {
-      return { error: "Précise le type de justificatif." };
+      return { error: "Précisez le type de justificatif." };
     }
     if (file && file.size > 0) {
       const path = `${user.id}/xtra-${Date.now()}-${file.name}`;
@@ -190,7 +190,7 @@ export async function uploadPhoto(
   const { supabase, user } = await requireUser("professionnel");
 
   const file = formData.get("fichier") as File | null;
-  if (!file || file.size === 0) return { error: "Choisis une photo." };
+  if (!file || file.size === 0) return { error: "Choisissez une photo." };
 
   const { count } = await supabase
     .from("professional_photos")
@@ -238,7 +238,7 @@ export async function upsertPrompt(
   const question = String(formData.get("question") ?? "").trim();
   const reponse = String(formData.get("reponse") ?? "").trim();
 
-  if (!question || !reponse) return { error: "Choisis une question et rédige une réponse." };
+  if (!question || !reponse) return { error: "Choisissez une question et rédigez une réponse." };
 
   if (promptId) {
     const { error } = await supabase

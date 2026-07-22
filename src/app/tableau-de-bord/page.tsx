@@ -31,14 +31,14 @@ export default async function TableauDeBordPage() {
         Bienvenue{profile?.role ? ` — ${profile.role}` : ""} !
       </h1>
       <p className="mt-4 text-gray-600">
-        Ton compte est créé. Complète ton profil pour commencer.
+        Votre compte est créé. Complétez votre profil pour commencer.
       </p>
       {feedbackEnAttente && (
         <Link
           href="/feedback"
           className="mt-4 rounded-lg bg-liams-teal/10 px-4 py-2 text-sm font-medium text-liams-teal hover:bg-liams-teal/20"
         >
-          On aimerait avoir ton avis sur Liams — 2 minutes chrono
+          On aimerait avoir votre avis sur Liams — 2 minutes chrono
         </Link>
       )}
       {profile?.role === "parent" && (

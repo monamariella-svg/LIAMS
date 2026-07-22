@@ -34,7 +34,7 @@ export async function demanderReservationRecurrente(
   const heureFin = String(formData.get("heure_fin") ?? "");
 
   if (jourSemaine < 0 || !heureDebut || !heureFin) {
-    return { error: "Choisis un jour et des horaires." };
+    return { error: "Choisissez un jour et des horaires." };
   }
 
   const { error } = await supabase.from("recurring_bookings").insert({
