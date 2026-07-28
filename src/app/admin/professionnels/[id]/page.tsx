@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { validerDocument, validerQualificationXtra, toggleBadge } from "../../actions";
@@ -44,6 +45,14 @@ export default async function AdminProfessionnelPage({
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+      <div className="flex gap-4">
+        <Link href="/admin" className="text-sm text-liams-navy underline">
+          ← Retour au tableau de bord admin
+        </Link>
+        <Link href="/admin/professionnels" className="text-sm text-liams-navy underline">
+          ← Retour à la liste des professionnels
+        </Link>
+      </div>
       <h1 className="text-2xl font-semibold text-liams-navy">Vérification professionnel</h1>
       <p className="text-sm text-gray-500">
         Statut global casier :{" "}

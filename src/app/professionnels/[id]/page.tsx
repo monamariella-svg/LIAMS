@@ -56,6 +56,11 @@ export default async function ProfessionnelPublicPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
+      {currentUser && (
+        <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
+          ← Retour au tableau de bord
+        </Link>
+      )}
       <PhotoCarousel urls={photoUrls} />
 
       {currentUserRole === "parent" && (

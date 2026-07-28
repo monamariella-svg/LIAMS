@@ -37,6 +37,9 @@ export default async function ReseauPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
+      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
+        ← Retour au tableau de bord
+      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon réseau de confiance</h1>
 
       {(reseaux ?? []).length === 0 && (

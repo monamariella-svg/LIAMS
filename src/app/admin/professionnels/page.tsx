@@ -17,6 +17,9 @@ export default async function AdminProfessionnelsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-12">
+      <Link href="/admin" className="self-start text-sm text-liams-navy underline">
+        ← Retour au tableau de bord admin
+      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Professionnels</h1>
 
       <div className="flex flex-col gap-2">
