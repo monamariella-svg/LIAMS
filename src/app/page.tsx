@@ -1,37 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
   return (
     <div className="flex flex-col flex-1">
-      <header className="flex items-center justify-between px-6 py-4 sm:px-12">
-        <Image
-          src="/logo/Rectangle_Couleur.png"
-          alt="Liams"
-          width={140}
-          height={40}
-          priority
-          className="h-8 w-auto sm:h-10"
-        />
-        <nav className="flex items-center gap-4 text-sm font-medium text-liams-navy">
-          <Link href="/comment-ca-marche" className="hidden sm:inline hover:text-liams-orange">
-            Comment ça marche
-          </Link>
-          <Link
-            href="/connexion"
-            className="rounded-full border border-liams-navy px-4 py-2 hover:bg-liams-navy hover:text-white transition-colors"
-          >
-            Connexion
-          </Link>
-          <Link
-            href="/inscription"
-            className="rounded-full bg-liams-orange px-4 py-2 text-white hover:opacity-90 transition-opacity"
-          >
-            Inscription
-          </Link>
-        </nav>
-      </header>
-
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-20 text-center sm:px-12">
         <h1 className="max-w-2xl text-3xl font-semibold leading-tight text-liams-navy sm:text-5xl">
           La garde d&apos;enfants de confiance,{" "}
