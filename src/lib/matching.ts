@@ -2,7 +2,7 @@
 // Ordre : (1) compatibilité de planning, (2) proximité géo/trajet, (3) score qualitatif.
 
 import { distanceKm, distanceToSegmentKm, type Point } from "@/lib/geo";
-import type { CreneauDisponibilite } from "@/lib/disponibilites";
+import { addDays, isoWeekday, todayISO } from "@/lib/calendar";
 
 export type CritereRecherche = {
   jour?: number;
@@ -17,9 +17,16 @@ export type CritereRecherche = {
   tagsBesoins?: string[];
 };
 
+export type CreneauCalendrier = {
+  date: string;
+  heure_debut: string;
+  heure_fin: string;
+  statut: "libre" | "libre_urgence" | "occupe";
+};
+
 export type ProfessionalCandidat = {
   user_id: string;
-  disponibilites: CreneauDisponibilite[];
+  slots: CreneauCalendrier[];
   latitude: number | null;
   longitude: number | null;
   rayon_km: number;
@@ -28,24 +35,37 @@ export type ProfessionalCandidat = {
   badges: string[];
 };
 
+// Horizon de recherche : un créneau du calendrier n'est pris en compte pour le
+// matching que s'il tombe dans les N prochains jours (au-delà, le professionnel
+// n'a probablement pas encore déclaré ses disponibilités).
+const HORIZON_RECHERCHE_JOURS = 60;
+
 export type ResultatMatch = {
   candidat: ProfessionalCandidat;
   score: number;
   distanceKm: number | null;
 };
 
-function creneauCouvre(creneau: CreneauDisponibilite, heureDebut: string, heureFin: string) {
-  return creneau.debut <= heureDebut && creneau.fin >= heureFin;
-}
-
 function planningCompatible(
-  disponibilites: CreneauDisponibilite[],
+  slots: CreneauCalendrier[],
   jour?: number,
   heureDebut?: string,
   heureFin?: string,
 ) {
   if (jour === undefined || !heureDebut || !heureFin) return true;
-  return disponibilites.some((c) => c.jour === jour && creneauCouvre(c, heureDebut, heureFin));
+
+  const aujourdHui = todayISO();
+  const limite = addDays(aujourdHui, HORIZON_RECHERCHE_JOURS);
+
+  return slots.some(
+    (s) =>
+      s.statut !== "occupe" &&
+      s.date >= aujourdHui &&
+      s.date <= limite &&
+      isoWeekday(s.date) === jour &&
+      s.heure_debut <= heureDebut &&
+      s.heure_fin >= heureFin,
+  );
 }
 
 function distanceCandidat(candidat: ProfessionalCandidat, criteres: CritereRecherche): number | null {
@@ -89,7 +109,7 @@ export function matchProfessionnels(
   criteres: CritereRecherche,
 ): ResultatMatch[] {
   return candidats
-    .filter((c) => planningCompatible(c.disponibilites, criteres.jour, criteres.heureDebut, criteres.heureFin))
+    .filter((c) => planningCompatible(c.slots, criteres.jour, criteres.heureDebut, criteres.heureFin))
     .map((c) => ({ candidat: c, distance: distanceCandidat(c, criteres) }))
     .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
     .filter(({ candidat }) =>

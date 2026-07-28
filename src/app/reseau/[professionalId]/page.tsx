@@ -1,21 +1,22 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { startOfWeek, todayISO } from "@/lib/calendar";
+import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { demanderReservationUrgente } from "./actions";
 import { RecurrenceForm } from "./RecurrenceForm";
 
-const STATUT_SLOT_LABELS: Record<string, string> = {
-  libre: "Libre",
-  libre_urgence: "Libre — garde d'urgence",
-  occupe: "Occupé",
-};
-
 export default async function PlanningProfessionnelPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ professionalId: string }>;
+  searchParams: Promise<{ week?: string }>;
 }) {
   const { professionalId } = await params;
+  const { week } = await searchParams;
   const { supabase, user } = await requireUser("parent");
+  const weekStart = startOfWeek(week || todayISO());
 
   const { data: reseau } = await supabase
     .from("parent_networks")
@@ -26,39 +27,64 @@ export default async function PlanningProfessionnelPage({
 
   if (!reseau || reseau.statut !== "accepte") redirect("/reseau");
 
-  const { data: slots } = await supabase
-    .from("availability_slots")
-    .select("*")
-    .eq("professional_id", professionalId)
-    .order("date")
-    .order("heure_debut");
+  const [{ data: slots }, { data: mesReservations }] = await Promise.all([
+    supabase
+      .from("availability_slots")
+      .select("*")
+      .eq("professional_id", professionalId)
+      .order("date")
+      .order("heure_debut"),
+    supabase
+      .from("urgent_bookings")
+      .select("slot_id")
+      .eq("professional_id", professionalId)
+      .eq("parent_id", user.id)
+      .eq("statut", "confirme"),
+  ]);
 
   if (!slots) notFound();
 
+  const mesSlotIds = new Set((mesReservations ?? []).map((r) => r.slot_id));
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
+      <Link href="/reseau" className="self-start text-sm text-liams-navy underline">
+        ← Retour à mon réseau
+      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Planning du professionnel</h1>
 
-      <section className="flex flex-col gap-2">
-        {slots.length === 0 && <p className="text-sm text-gray-500">Aucun créneau déclaré.</p>}
-        {slots.map((slot) => (
-          <div key={slot.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2 text-sm">
-            <span>
-              {slot.date} · {slot.heure_debut}–{slot.heure_fin} ·{" "}
-              <span className="text-gray-500">{STATUT_SLOT_LABELS[slot.statut] ?? slot.statut}</span>
-            </span>
-            {slot.statut === "libre_urgence" && (
-              <form action={demanderReservationUrgente}>
-                <input type="hidden" name="slot_id" value={slot.id} />
-                <input type="hidden" name="professional_id" value={professionalId} />
-                <button type="submit" className="rounded-full bg-liams-orange px-3 py-1 text-xs font-medium text-white hover:opacity-90">
-                  Réserver en urgence
-                </button>
-              </form>
-            )}
-          </div>
-        ))}
-      </section>
+      <p className="text-xs text-gray-500">
+        <span className="mr-3 inline-flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-teal" /> Régulier
+        </span>
+        <span className="mr-3 inline-flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-orange" /> Urgence
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" /> Occupé
+        </span>
+      </p>
+
+      <WeekCalendar
+        weekStart={weekStart}
+        basePath={`/reseau/${professionalId}`}
+        slots={slots as CalendarSlot[]}
+        estMaReservation={(slot) => mesSlotIds.has(slot.id)}
+        renderSlotFooter={(slot) =>
+          slot.statut === "libre_urgence" && (
+            <form action={demanderReservationUrgente}>
+              <input type="hidden" name="slot_id" value={slot.id} />
+              <input type="hidden" name="professional_id" value={professionalId} />
+              <button
+                type="submit"
+                className="rounded-full bg-liams-orange px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90"
+              >
+                Réserver
+              </button>
+            </form>
+          )
+        }
+      />
 
       <RecurrenceForm professionalId={professionalId} />
     </div>

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import type { CreneauDisponibilite } from "@/lib/disponibilites";
 import { computeProfessionalProgress } from "@/lib/progress";
 import { ProfessionalProfileForm } from "./ProfessionalProfileForm";
 import { DocumentUploadForm } from "./DocumentUploadForm";
@@ -81,7 +80,6 @@ export default async function ProfilProfessionnelPage() {
         rayonKm={profile?.rayon_km ?? 15}
         accueilADomicile={profile?.accueil_a_domicile ?? false}
         specialisations={profile?.specialisations ?? []}
-        disponibilites={(profile?.disponibilites as CreneauDisponibilite[]) ?? []}
       />
 
       <section className="rounded-xl border border-gray-200 p-6">

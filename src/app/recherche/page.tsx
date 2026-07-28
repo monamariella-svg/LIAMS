@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { geocodeAdresse } from "@/lib/geocoding";
-import { matchProfessionnels, type ProfessionalCandidat } from "@/lib/matching";
+import { matchProfessionnels, type ProfessionalCandidat, type CreneauCalendrier } from "@/lib/matching";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
+import { todayISO } from "@/lib/calendar";
 
 const XTRA_BADGES = [
   "accueil_xtras_ordinaires",
@@ -23,12 +24,23 @@ export default async function RecherchePage({
     Object.entries(rawParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]),
   ) as Record<string, string | undefined>;
 
-  const [{ data: parentProfile }, { data: professionnels }, { data: badgesCatalogue }] =
+  const [{ data: parentProfile }, { data: professionnels }, { data: badgesCatalogue }, { data: creneaux }] =
     await Promise.all([
       supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
       supabase.from("badges").select("*").order("source"),
+      supabase
+        .from("availability_slots")
+        .select("professional_id, date, heure_debut, heure_fin, statut")
+        .gte("date", todayISO()),
     ]);
+
+  const creneauxParPro = new Map<string, CreneauCalendrier[]>();
+  for (const creneau of creneaux ?? []) {
+    const liste = creneauxParPro.get(creneau.professional_id) ?? [];
+    liste.push(creneau);
+    creneauxParPro.set(creneau.professional_id, liste);
+  }
 
   const jour = params.jour ? Number(params.jour) : undefined;
   const badgesRawList = rawParams.badges;
@@ -47,7 +59,7 @@ export default async function RecherchePage({
 
   const candidats: ProfessionalCandidat[] = (professionnels ?? []).map((p) => ({
     user_id: p.user_id,
-    disponibilites: p.disponibilites ?? [],
+    slots: creneauxParPro.get(p.user_id) ?? [],
     latitude: p.latitude,
     longitude: p.longitude,
     rayon_km: p.rayon_km,

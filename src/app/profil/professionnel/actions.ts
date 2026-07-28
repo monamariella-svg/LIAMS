@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { parseDisponibilitesFromFormData } from "@/lib/disponibilites";
 import { geocodeAdresse } from "@/lib/geocoding";
 
 export type ProfilFormState =
@@ -49,7 +48,6 @@ export async function updateProfessionalProfile(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const disponibilites = parseDisponibilitesFromFormData(formData);
   const coords = await geocodeAdresse(adresse);
 
   const { error } = await supabase.from("professional_profiles").upsert({
@@ -59,7 +57,6 @@ export async function updateProfessionalProfile(
     rayon_km: rayonKm,
     accueil_a_domicile: accueilADomicile,
     specialisations,
-    disponibilites,
     ...(coords && { latitude: coords.latitude, longitude: coords.longitude }),
   });
 

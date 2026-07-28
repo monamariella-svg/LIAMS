@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
-import { AjouterCreneauForm } from "./AjouterCreneauForm";
+import { startOfWeek, todayISO } from "@/lib/calendar";
+import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
+import { CreneauRecurrentForm } from "./CreneauRecurrentForm";
 import {
+  ajouterCreneau,
   supprimerCreneau,
   confirmerReservationUrgente,
   refuserReservationUrgente,
@@ -10,14 +13,14 @@ import {
   refuserRecurrence,
 } from "./actions";
 
-const STATUT_SLOT_LABELS: Record<string, string> = {
-  libre: "Libre",
-  libre_urgence: "Libre — garde d'urgence",
-  occupe: "Occupé",
-};
-
-export default async function PlanningPage() {
+export default async function PlanningPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>;
+}) {
   const { supabase, user } = await requireUser("professionnel");
+  const { week } = await searchParams;
+  const weekStart = startOfWeek(week || todayISO());
 
   const [{ data: slots }, { data: urgentBookings }, { data: recurringBookings }] = await Promise.all([
     supabase
@@ -41,7 +44,7 @@ export default async function PlanningPage() {
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
       <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
         ← Retour au tableau de bord
       </Link>
@@ -108,28 +111,39 @@ export default async function PlanningPage() {
         </section>
       )}
 
-      <section className="rounded-xl border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-liams-navy">Mes créneaux</h2>
-        <div className="mt-3 flex flex-col gap-2">
-          {(slots ?? []).length === 0 && <p className="text-sm text-gray-500">Aucun créneau déclaré.</p>}
-          {(slots ?? []).map((slot) => (
-            <div key={slot.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-2 text-sm">
-              <span>
-                {slot.date} · {slot.heure_debut}–{slot.heure_fin} ·{" "}
-                <span className="text-gray-500">{STATUT_SLOT_LABELS[slot.statut] ?? slot.statut}</span>
-              </span>
+      <section>
+        <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mon calendrier</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          <span className="mr-3 inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-teal" /> Régulier
+          </span>
+          <span className="mr-3 inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-orange" /> Urgence
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" /> Occupé
+          </span>
+        </p>
+        <WeekCalendar
+          weekStart={weekStart}
+          basePath="/planning"
+          slots={(slots ?? []) as CalendarSlot[]}
+          editable
+          addSlotAction={ajouterCreneau}
+          renderSlotFooter={(slot) =>
+            slot.statut !== "occupe" && (
               <form action={supprimerCreneau}>
                 <input type="hidden" name="slot_id" value={slot.id} />
-                <button type="submit" className="text-xs text-red-600 hover:underline">
-                  Supprimer
+                <button type="submit" className="text-[10px] underline opacity-70 hover:opacity-100">
+                  Retirer
                 </button>
               </form>
-            </div>
-          ))}
-        </div>
+            )
+          }
+        />
       </section>
 
-      <AjouterCreneauForm />
+      <CreneauRecurrentForm />
     </div>
   );
 }

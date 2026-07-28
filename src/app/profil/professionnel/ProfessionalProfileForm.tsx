@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
-import { JOURS_SEMAINE, type CreneauDisponibilite } from "@/lib/disponibilites";
 import { updateProfessionalProfile } from "./actions";
 
 export function ProfessionalProfileForm({
@@ -10,17 +10,14 @@ export function ProfessionalProfileForm({
   rayonKm,
   accueilADomicile,
   specialisations,
-  disponibilites,
 }: {
   tarifHoraire: number | null;
   adresse: string;
   rayonKm: number;
   accueilADomicile: boolean;
   specialisations: string[];
-  disponibilites: CreneauDisponibilite[];
 }) {
   const [state, formAction, pending] = useActionState(updateProfessionalProfile, undefined);
-  const parJour = new Map(disponibilites.map((c) => [c.jour, c]));
 
   return (
     <form action={formAction} className="flex flex-col gap-4 rounded-xl border border-gray-200 p-6">
@@ -75,39 +72,13 @@ export function ProfessionalProfileForm({
         J&apos;accueille les enfants à mon domicile ou dans un établissement
       </label>
 
-      <div>
-        <p className="text-sm font-medium text-gray-700">Disponibilités récurrentes</p>
-        <div className="mt-2 flex flex-col gap-2">
-          {JOURS_SEMAINE.map((label, jour) => {
-            const creneau = parJour.get(jour);
-            return (
-              <div key={jour} className="flex items-center gap-3 text-sm">
-                <label className="flex w-32 items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name={`jour_${jour}_actif`}
-                    defaultChecked={Boolean(creneau)}
-                  />
-                  {label}
-                </label>
-                <input
-                  type="time"
-                  name={`jour_${jour}_debut`}
-                  defaultValue={creneau?.debut ?? "08:00"}
-                  className="rounded border border-gray-300 px-2 py-1"
-                />
-                <span>à</span>
-                <input
-                  type="time"
-                  name={`jour_${jour}_fin`}
-                  defaultValue={creneau?.fin ?? "18:00"}
-                  className="rounded border border-gray-300 px-2 py-1"
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <p className="text-xs text-gray-500">
+        Tes disponibilités se gèrent maintenant directement dans ton{" "}
+        <Link href="/planning" className="underline">
+          calendrier
+        </Link>
+        .
+      </p>
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       {state?.success && <p className="text-sm text-liams-teal">Profil enregistré.</p>}
