@@ -33,23 +33,27 @@ export function WeekCalendar({
   slots,
   editable = false,
   addSlotAction,
-  renderSlotFooter,
-  estMaReservation,
+  slotFooters,
+  mesReservationIds,
 }: {
   weekStart: string;
   basePath: string;
   slots: CalendarSlot[];
   editable?: boolean;
   addSlotAction?: (prevState: SlotFormState, formData: FormData) => Promise<SlotFormState>;
-  renderSlotFooter?: (slot: CalendarSlot) => ReactNode;
-  /** Pour un créneau occupé, indique s'il appartient au parent qui consulte le
-   * calendrier — auquel cas on affiche "Votre réservation" au lieu du générique
-   * "Occupé", sans jamais révéler qui a réservé les créneaux des autres parents. */
-  estMaReservation?: (slot: CalendarSlot) => boolean;
+  /** Pied de créneau pré-rendu côté serveur, indexé par id de créneau. Des
+   * ReactNode plutôt qu'une fonction de rendu : les composants serveur ne
+   * peuvent pas passer de fonctions ordinaires à un composant client. */
+  slotFooters?: Record<string, ReactNode>;
+  /** Ids des créneaux occupés réservés par le parent qui consulte le
+   * calendrier — on affiche "Votre réservation" au lieu du générique "Occupé",
+   * sans jamais révéler qui a réservé les créneaux des autres parents. */
+  mesReservationIds?: string[];
 }) {
   const [jourOuvert, setJourOuvert] = useState<string | null>(null);
   const noopAction = async () => undefined;
   const [state, formAction, pending] = useActionState(addSlotAction ?? noopAction, undefined);
+  const mesReservations = new Set(mesReservationIds ?? []);
 
   const weekDates = getWeekDates(weekStart);
   const slotsParJour = new Map<string, CalendarSlot[]>();
@@ -107,10 +111,10 @@ export function WeekCalendar({
                     <span>
                       {slot.heure_debut.slice(0, 5)}–{slot.heure_fin.slice(0, 5)}
                     </span>
-                    {renderSlotFooter?.(slot)}
+                    {slotFooters?.[slot.id]}
                   </div>
                   <span className="text-[10px] opacity-70">
-                    {slot.statut === "occupe" && estMaReservation?.(slot)
+                    {slot.statut === "occupe" && mesReservations.has(slot.id)
                       ? "Votre réservation"
                       : STATUT_LABELS[slot.statut]}
                   </span>

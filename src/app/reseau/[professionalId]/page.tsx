@@ -69,21 +69,24 @@ export default async function PlanningProfessionnelPage({
         weekStart={weekStart}
         basePath={`/reseau/${professionalId}`}
         slots={slots as CalendarSlot[]}
-        estMaReservation={(slot) => mesSlotIds.has(slot.id)}
-        renderSlotFooter={(slot) =>
-          slot.statut === "libre_urgence" && (
-            <form action={demanderReservationUrgente}>
-              <input type="hidden" name="slot_id" value={slot.id} />
-              <input type="hidden" name="professional_id" value={professionalId} />
-              <button
-                type="submit"
-                className="rounded-full bg-liams-orange px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90"
-              >
-                Réserver
-              </button>
-            </form>
-          )
-        }
+        mesReservationIds={[...mesSlotIds]}
+        slotFooters={Object.fromEntries(
+          slots
+            .filter((slot) => slot.statut === "libre_urgence")
+            .map((slot) => [
+              slot.id,
+              <form key={slot.id} action={demanderReservationUrgente}>
+                <input type="hidden" name="slot_id" value={slot.id} />
+                <input type="hidden" name="professional_id" value={professionalId} />
+                <button
+                  type="submit"
+                  className="rounded-full bg-liams-orange px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90"
+                >
+                  Réserver
+                </button>
+              </form>,
+            ]),
+        )}
       />
 
       <RecurrenceForm professionalId={professionalId} />

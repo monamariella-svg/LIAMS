@@ -130,16 +130,19 @@ export default async function PlanningPage({
           slots={(slots ?? []) as CalendarSlot[]}
           editable
           addSlotAction={ajouterCreneau}
-          renderSlotFooter={(slot) =>
-            slot.statut !== "occupe" && (
-              <form action={supprimerCreneau}>
-                <input type="hidden" name="slot_id" value={slot.id} />
-                <button type="submit" className="text-[10px] underline opacity-70 hover:opacity-100">
-                  Retirer
-                </button>
-              </form>
-            )
-          }
+          slotFooters={Object.fromEntries(
+            (slots ?? [])
+              .filter((slot) => slot.statut !== "occupe")
+              .map((slot) => [
+                slot.id,
+                <form key={slot.id} action={supprimerCreneau}>
+                  <input type="hidden" name="slot_id" value={slot.id} />
+                  <button type="submit" className="text-[10px] underline opacity-70 hover:opacity-100">
+                    Retirer
+                  </button>
+                </form>,
+              ]),
+          )}
         />
       </section>
 
