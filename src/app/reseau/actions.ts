@@ -48,5 +48,12 @@ export async function repondreReseau(formData: FormData) {
     .eq("parent_id", parentId)
     .eq("professional_id", user!.id);
 
+  await notifierUtilisateur(
+    supabase,
+    parentId,
+    accepter ? "Professionnel ajouté à votre réseau" : "Demande de réseau refusée",
+    `<p>Le professionnel a ${accepter ? "accepté de rejoindre" : "refusé de rejoindre"} votre réseau de confiance sur Liams.</p>`,
+  );
+
   revalidatePath("/reseau");
 }

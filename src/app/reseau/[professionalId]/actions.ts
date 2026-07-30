@@ -20,6 +20,13 @@ export async function demanderReservationUrgente(formData: FormData) {
     statut: "en_attente",
   });
 
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Nouvelle demande de garde d'urgence",
+    "<p>Un parent de votre réseau demande une garde d'urgence sur l'un de vos créneaux Liams. Connectez-vous pour confirmer ou refuser.</p>",
+  );
+
   revalidatePath(`/reseau/${professionalId}`);
 }
 
@@ -48,6 +55,13 @@ export async function demanderReservationRecurrente(
   });
 
   if (error) return { error: error.message };
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Nouvelle demande de réservation récurrente",
+    "<p>Un parent de votre réseau demande une réservation récurrente sur Liams. Connectez-vous pour la valider ou la refuser.</p>",
+  );
 
   revalidatePath(`/reseau/${professionalId}`);
   return { success: true };
@@ -119,6 +133,13 @@ export async function modifierReservationRecurrente(
     .single();
 
   if (error || !reservation) return { error: "Demande introuvable." };
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Demande de réservation récurrente modifiée",
+    "<p>Un parent a modifié sa demande de réservation récurrente sur Liams. Connectez-vous pour la valider ou la refuser.</p>",
+  );
 
   revalidatePath(`/reseau/${professionalId}`);
   return { success: true };

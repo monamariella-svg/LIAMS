@@ -21,7 +21,7 @@ export async function sendEmail({
   }
 
   try {
-    await fetch("https://api.resend.com/emails", {
+    const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -29,6 +29,11 @@ export async function sendEmail({
       },
       body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
     });
+    if (!response.ok) {
+      // Clé invalide, domaine d'envoi non vérifié, quota... : Resend répond
+      // 4xx avec un corps explicite — le rendre visible dans les logs Vercel.
+      console.error(`Échec d'envoi email (${response.status}):`, await response.text());
+    }
   } catch (error) {
     console.error("Échec d'envoi email:", error);
   }

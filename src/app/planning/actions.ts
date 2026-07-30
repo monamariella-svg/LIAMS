@@ -396,11 +396,22 @@ export async function refuserReservationUrgente(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
   const bookingId = String(formData.get("booking_id") ?? "");
 
-  await supabase
+  const { data: booking } = await supabase
     .from("urgent_bookings")
     .update({ statut: "refuse" })
     .eq("id", bookingId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", user.id)
+    .select("parent_id")
+    .maybeSingle();
+
+  if (booking) {
+    await notifierUtilisateur(
+      supabase,
+      booking.parent_id,
+      "Demande de garde d'urgence refusée",
+      "<p>Le professionnel n'a pas pu accepter votre demande de garde d'urgence sur Liams. Connectez-vous pour chercher un autre créneau.</p>",
+    );
+  }
 
   revalidatePath("/planning");
 }
@@ -409,11 +420,22 @@ export async function validerRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
 
-  await supabase
+  const { data: reservation } = await supabase
     .from("recurring_bookings")
     .update({ statut: "actif" })
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", user.id)
+    .select("parent_id")
+    .maybeSingle();
+
+  if (reservation) {
+    await notifierUtilisateur(
+      supabase,
+      reservation.parent_id,
+      "Réservation récurrente validée",
+      "<p>Le professionnel a validé votre réservation récurrente sur Liams.</p>",
+    );
+  }
 
   revalidatePath("/planning");
 }
@@ -435,14 +457,21 @@ export async function refuserRecurrence(formData: FormData) {
     .eq("id", recurrenceId)
     .eq("professional_id", user.id);
 
-  // Refuser une demande en attente est silencieux ; annuler une récurrence
-  // déjà validée prévient le parent, qui comptait sur cette garde.
+  // Message différent selon qu'on refuse une demande en attente ou qu'on
+  // annule une récurrence déjà validée sur laquelle le parent comptait.
   if (reservation?.statut === "actif") {
     await notifierUtilisateur(
       supabase,
       reservation.parent_id,
       "Réservation récurrente annulée",
       "<p>Le professionnel a annulé votre réservation récurrente sur Liams. Connectez-vous pour organiser une autre garde.</p>",
+    );
+  } else if (reservation?.statut === "en_attente") {
+    await notifierUtilisateur(
+      supabase,
+      reservation.parent_id,
+      "Demande de réservation récurrente refusée",
+      "<p>Le professionnel n'a pas pu accepter votre demande de réservation récurrente sur Liams. Connectez-vous pour chercher une autre solution.</p>",
     );
   }
 

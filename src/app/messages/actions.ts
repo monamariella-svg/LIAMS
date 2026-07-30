@@ -86,6 +86,21 @@ export async function envoyerMessage(
 
   if (error) return { error: error.message };
 
+  const { data: match } = await supabase
+    .from("matches")
+    .select("parent_id, professional_id")
+    .eq("id", matchId)
+    .maybeSingle();
+  if (match) {
+    const destinataireId = match.parent_id === user!.id ? match.professional_id : match.parent_id;
+    await notifierUtilisateur(
+      supabase,
+      destinataireId,
+      "Nouveau message sur Liams",
+      "<p>Vous avez reçu un nouveau message sur Liams. Connectez-vous pour le lire et y répondre.</p>",
+    );
+  }
+
   revalidatePath(`/messages/${matchId}`);
   return { success: true };
 }
