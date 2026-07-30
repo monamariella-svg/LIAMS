@@ -36,6 +36,10 @@ export function WeekCalendar({
   slotFooters,
   mesReservationIds,
   statutLabels,
+  typesCreneau = [
+    { value: "libre", label: "Régulier" },
+    { value: "libre_urgence", label: "Urgence" },
+  ],
 }: {
   weekStart: string;
   basePath: string;
@@ -53,6 +57,9 @@ export function WeekCalendar({
   /** Remplace les étiquettes par défaut des statuts (ex. le planning du
    * parent affiche "Garde confirmée" plutôt que "Régulier"). */
   statutLabels?: Record<string, string>;
+  /** Types proposés dans le formulaire d'ajout. Avec une seule entrée, le
+   * sélecteur disparaît (ex. le parent n'ajoute que des "besoins"). */
+  typesCreneau?: { value: string; label: string }[];
 }) {
   const [jourOuvert, setJourOuvert] = useState<string | null>(null);
   const noopAction = async () => undefined;
@@ -144,13 +151,20 @@ export function WeekCalendar({
                       className="w-full rounded border border-gray-300 px-1 py-0.5 text-[11px]"
                     />
                   </div>
-                  <select
-                    name="statut"
-                    className="rounded border border-gray-300 px-1 py-0.5 text-[11px]"
-                  >
-                    <option value="libre">Régulier</option>
-                    <option value="libre_urgence">Urgence</option>
-                  </select>
+                  {typesCreneau.length > 1 ? (
+                    <select
+                      name="statut"
+                      className="rounded border border-gray-300 px-1 py-0.5 text-[11px]"
+                    >
+                      {typesCreneau.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="hidden" name="statut" value={typesCreneau[0]?.value ?? ""} />
+                  )}
                   <div className="flex gap-1">
                     <button
                       type="submit"

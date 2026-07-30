@@ -217,6 +217,159 @@ export async function supprimerCreneau(formData: FormData) {
   revalidatePath("/planning");
 }
 
+// ------------------------------------------------------------------------
+// Besoins de garde du parent — miroir des créneaux du professionnel : des
+// besoins ponctuels ajoutés depuis le calendrier, et des séries récurrentes.
+// ------------------------------------------------------------------------
+
+export async function ajouterBesoin(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const date = String(formData.get("date") ?? "");
+  const heureDebut = String(formData.get("heure_debut") ?? "");
+  const heureFin = String(formData.get("heure_fin") ?? "");
+
+  if (!date || !heureDebut || !heureFin) return { error: "Renseignez la date et les horaires." };
+  if (heureFin <= heureDebut) {
+    return { error: "L'heure de fin doit être après l'heure de début." };
+  }
+
+  const { error } = await supabase.from("besoins_garde").insert({
+    parent_id: user.id,
+    date,
+    heure_debut: heureDebut,
+    heure_fin: heureFin,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+export async function supprimerBesoin(formData: FormData) {
+  const { supabase, user } = await requireUser("parent");
+  const besoinId = String(formData.get("besoin_id") ?? "");
+  await supabase.from("besoins_garde").delete().eq("id", besoinId).eq("parent_id", user.id);
+  revalidatePath("/planning");
+}
+
+async function genererBesoins(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  parentId: string,
+  recurrenceId: string,
+  champs: ChampsRecurrence,
+) {
+  const rows = champs.dates.map((date) => ({
+    parent_id: parentId,
+    date,
+    heure_debut: champs.heureDebut,
+    heure_fin: champs.heureFin,
+    recurrence_id: recurrenceId,
+  }));
+
+  return supabase
+    .from("besoins_garde")
+    .upsert(rows, { onConflict: "parent_id,date,heure_debut", ignoreDuplicates: true });
+}
+
+export async function ajouterBesoinsRecurrents(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const lu = lireChampsRecurrence(formData);
+  if ("error" in lu) return { error: lu.error };
+  const { champs } = lu;
+
+  const { data: recurrence, error: erreurSerie } = await supabase
+    .from("besoin_recurrences")
+    .insert({
+      parent_id: user.id,
+      jours: champs.jours,
+      heure_debut: champs.heureDebut,
+      heure_fin: champs.heureFin,
+      date_debut: champs.dateDebut,
+      date_fin: champs.dateFin,
+    })
+    .select("id")
+    .single();
+
+  if (erreurSerie) return { error: erreurSerie.message };
+
+  const { error } = await genererBesoins(supabase, user.id, recurrence.id, champs);
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+export async function modifierBesoinsRecurrents(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const recurrenceId = String(formData.get("recurrence_id") ?? "");
+  if (!recurrenceId) return { error: "Récurrence introuvable." };
+
+  const lu = lireChampsRecurrence(formData);
+  if ("error" in lu) return { error: lu.error };
+  const { champs } = lu;
+
+  const { data: recurrence, error: erreurSerie } = await supabase
+    .from("besoin_recurrences")
+    .update({
+      jours: champs.jours,
+      heure_debut: champs.heureDebut,
+      heure_fin: champs.heureFin,
+      date_debut: champs.dateDebut,
+      date_fin: champs.dateFin,
+    })
+    .eq("id", recurrenceId)
+    .eq("parent_id", user.id)
+    .select("id")
+    .single();
+
+  if (erreurSerie || !recurrence) return { error: "Récurrence introuvable." };
+
+  await supabase
+    .from("besoins_garde")
+    .delete()
+    .eq("recurrence_id", recurrenceId)
+    .eq("parent_id", user.id);
+
+  const { error } = await genererBesoins(supabase, user.id, recurrenceId, champs);
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+export async function supprimerBesoinRecurrence(formData: FormData) {
+  const { supabase, user } = await requireUser("parent");
+  const recurrenceId = String(formData.get("recurrence_id") ?? "");
+  if (!recurrenceId) return;
+
+  await supabase
+    .from("besoins_garde")
+    .delete()
+    .eq("recurrence_id", recurrenceId)
+    .eq("parent_id", user.id);
+
+  await supabase
+    .from("besoin_recurrences")
+    .delete()
+    .eq("id", recurrenceId)
+    .eq("parent_id", user.id);
+
+  revalidatePath("/planning");
+}
+
 export async function confirmerReservationUrgente(formData: FormData) {
   const supabase = await createClient();
   const {

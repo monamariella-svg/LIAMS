@@ -3,26 +3,68 @@
 import { useActionState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { addDays, todayISO } from "@/lib/calendar";
-import { ajouterCreneauxRecurrents, modifierCreneauxRecurrents } from "./actions";
+import {
+  ajouterCreneauxRecurrents,
+  modifierCreneauxRecurrents,
+  ajouterBesoinsRecurrents,
+  modifierBesoinsRecurrents,
+} from "./actions";
 
 export type RecurrenceExistante = {
   id: string;
   jours: number[];
   heure_debut: string;
   heure_fin: string;
-  statut: string;
+  statut?: string;
   date_debut: string;
   date_fin: string;
+};
+
+/** Deux variantes du même formulaire : les créneaux de disponibilité du
+ * professionnel ("creneaux", avec choix du type) et les besoins de garde du
+ * parent ("besoins", sans type). */
+export type VarianteRecurrence = "creneaux" | "besoins";
+
+const TEXTES: Record<
+  VarianteRecurrence,
+  { titre: string; description: string; bouton: string; succesAjout: string }
+> = {
+  creneaux: {
+    titre: "Créneaux récurrents (répétition hebdomadaire)",
+    description:
+      "Comme dans Outlook : choisissez les jours de la semaine, l'horaire, et la période sur laquelle ça se répète.",
+    bouton: "Ajouter les créneaux récurrents",
+    succesAjout: "Créneaux récurrents ajoutés.",
+  },
+  besoins: {
+    titre: "Besoins récurrents (répétition hebdomadaire)",
+    description:
+      "Choisissez les jours de la semaine, l'horaire, et la période sur laquelle votre besoin de garde se répète.",
+    bouton: "Ajouter mes besoins récurrents",
+    succesAjout: "Besoins récurrents ajoutés.",
+  },
+};
+
+const ACTIONS: Record<VarianteRecurrence, { creer: typeof ajouterCreneauxRecurrents; modifier: typeof modifierCreneauxRecurrents }> = {
+  creneaux: { creer: ajouterCreneauxRecurrents, modifier: modifierCreneauxRecurrents },
+  besoins: { creer: ajouterBesoinsRecurrents, modifier: modifierBesoinsRecurrents },
 };
 
 /** Sans prop `recurrence` : création d'une nouvelle série. Avec : édition de
  * la série existante (champs préremplis, toute la série est régénérée sauf
  * les créneaux déjà réservés). */
-export function CreneauRecurrentForm({ recurrence }: { recurrence?: RecurrenceExistante }) {
+export function CreneauRecurrentForm({
+  recurrence,
+  variante = "creneaux",
+}: {
+  recurrence?: RecurrenceExistante;
+  variante?: VarianteRecurrence;
+}) {
   const [state, formAction, pending] = useActionState(
-    recurrence ? modifierCreneauxRecurrents : ajouterCreneauxRecurrents,
+    recurrence ? ACTIONS[variante].modifier : ACTIONS[variante].creer,
     undefined,
   );
+  const textes = TEXTES[variante];
   const today = todayISO();
   const dansHuitSemaines = addDays(today, 56);
 
@@ -67,17 +109,19 @@ export function CreneauRecurrentForm({ recurrence }: { recurrence?: RecurrenceEx
         </label>
       </div>
 
-      <label className="flex flex-col gap-1 text-sm">
-        Type de créneau
-        <select
-          name="statut"
-          defaultValue={recurrence?.statut ?? "libre"}
-          className="rounded-lg border border-gray-300 px-3 py-2"
-        >
-          <option value="libre">Régulier</option>
-          <option value="libre_urgence">Urgence</option>
-        </select>
-      </label>
+      {variante === "creneaux" && (
+        <label className="flex flex-col gap-1 text-sm">
+          Type de créneau
+          <select
+            name="statut"
+            defaultValue={recurrence?.statut ?? "libre"}
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          >
+            <option value="libre">Régulier</option>
+            <option value="libre_urgence">Urgence</option>
+          </select>
+        </label>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
@@ -103,7 +147,7 @@ export function CreneauRecurrentForm({ recurrence }: { recurrence?: RecurrenceEx
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       {state?.success && (
         <p className="text-sm text-liams-teal">
-          {recurrence ? "Récurrence modifiée." : "Créneaux récurrents ajoutés."}
+          {recurrence ? "Récurrence modifiée." : textes.succesAjout}
         </p>
       )}
 
@@ -116,7 +160,7 @@ export function CreneauRecurrentForm({ recurrence }: { recurrence?: RecurrenceEx
           ? "Enregistrement..."
           : recurrence
             ? "Enregistrer les modifications"
-            : "Ajouter les créneaux récurrents"}
+            : textes.bouton}
       </button>
     </form>
   );
@@ -125,13 +169,8 @@ export function CreneauRecurrentForm({ recurrence }: { recurrence?: RecurrenceEx
 
   return (
     <section className="rounded-xl border border-dashed border-gray-300 p-6">
-      <h2 className="text-sm font-semibold text-liams-navy">
-        Créneaux récurrents (répétition hebdomadaire)
-      </h2>
-      <p className="mt-1 text-xs text-gray-500">
-        Comme dans Outlook : choisissez les jours de la semaine, l&apos;horaire,
-        et la période sur laquelle ça se répète.
-      </p>
+      <h2 className="text-sm font-semibold text-liams-navy">{textes.titre}</h2>
+      <p className="mt-1 text-xs text-gray-500">{textes.description}</p>
       {formulaire}
     </section>
   );

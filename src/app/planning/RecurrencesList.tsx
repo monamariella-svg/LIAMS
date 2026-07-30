@@ -3,26 +3,48 @@
 import { useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { formatDateLabel } from "@/lib/calendar";
-import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
-import { supprimerRecurrence } from "./actions";
+import {
+  CreneauRecurrentForm,
+  type RecurrenceExistante,
+  type VarianteRecurrence,
+} from "./CreneauRecurrentForm";
+import { supprimerRecurrence, supprimerBesoinRecurrence } from "./actions";
 
 const TYPE_LABELS: Record<string, string> = {
   libre: "Régulier",
   libre_urgence: "Urgence",
 };
 
-export function RecurrencesList({ recurrences }: { recurrences: RecurrenceExistante[] }) {
+const TEXTES: Record<VarianteRecurrence, { titre: string; description: string }> = {
+  creneaux: {
+    titre: "Mes créneaux récurrents",
+    description:
+      "Modifier ou supprimer une série met à jour tous ses créneaux à venir ; les créneaux déjà réservés ne sont jamais touchés.",
+  },
+  besoins: {
+    titre: "Mes besoins récurrents",
+    description: "Modifier ou supprimer une série met à jour tous les besoins correspondants.",
+  },
+};
+
+export function RecurrencesList({
+  recurrences,
+  variante = "creneaux",
+}: {
+  recurrences: RecurrenceExistante[];
+  variante?: VarianteRecurrence;
+}) {
   const [idEnEdition, setIdEnEdition] = useState<string | null>(null);
+  const supprimerAction =
+    variante === "besoins" ? supprimerBesoinRecurrence : supprimerRecurrence;
+  const textes = TEXTES[variante];
 
   if (recurrences.length === 0) return null;
 
   return (
     <section className="rounded-xl border border-gray-200 p-6">
-      <h2 className="text-sm font-semibold text-liams-navy">Mes créneaux récurrents</h2>
-      <p className="mt-1 text-xs text-gray-500">
-        Modifier ou supprimer une série met à jour tous ses créneaux à venir ;
-        les créneaux déjà réservés ne sont jamais touchés.
-      </p>
+      <h2 className="text-sm font-semibold text-liams-navy">{textes.titre}</h2>
+      <p className="mt-1 text-xs text-gray-500">{textes.description}</p>
       <div className="mt-3 flex flex-col gap-2">
         {recurrences.map((rec) => (
           <div key={rec.id} className="rounded-lg border border-gray-100 px-4 py-2">
@@ -32,8 +54,8 @@ export function RecurrencesList({ recurrences }: { recurrences: RecurrenceExista
                 <strong>{rec.jours.map((j) => JOURS_SEMAINE[j]).join(", ")}</strong>{" "}
                 {rec.heure_debut.slice(0, 5)}–{rec.heure_fin.slice(0, 5)}
                 <span className="ml-2 text-xs text-gray-500">
-                  {TYPE_LABELS[rec.statut] ?? rec.statut} · du {formatDateLabel(rec.date_debut)} au{" "}
-                  {formatDateLabel(rec.date_fin)}
+                  {rec.statut ? `${TYPE_LABELS[rec.statut] ?? rec.statut} · ` : ""}du{" "}
+                  {formatDateLabel(rec.date_debut)} au {formatDateLabel(rec.date_fin)}
                 </span>
               </span>
               <div className="flex gap-2">
@@ -44,7 +66,7 @@ export function RecurrencesList({ recurrences }: { recurrences: RecurrenceExista
                 >
                   {idEnEdition === rec.id ? "Fermer" : "Modifier"}
                 </button>
-                <form action={supprimerRecurrence}>
+                <form action={supprimerAction}>
                   <input type="hidden" name="recurrence_id" value={rec.id} />
                   <button
                     type="submit"
@@ -55,7 +77,9 @@ export function RecurrencesList({ recurrences }: { recurrences: RecurrenceExista
                 </form>
               </div>
             </div>
-            {idEnEdition === rec.id && <CreneauRecurrentForm recurrence={rec} />}
+            {idEnEdition === rec.id && (
+              <CreneauRecurrentForm recurrence={rec} variante={variante} />
+            )}
           </div>
         ))}
       </div>
