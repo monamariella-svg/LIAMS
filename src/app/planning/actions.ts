@@ -38,12 +38,19 @@ export async function ajouterCreneau(
 
 const DUREE_MAX_RECURRENCE_JOURS = 183; // ~6 mois
 
-export async function ajouterCreneauxRecurrents(
-  _prevState: PlanningFormState,
-  formData: FormData,
-): Promise<PlanningFormState> {
-  const { supabase, user } = await requireUser("professionnel");
+type ChampsRecurrence = {
+  heureDebut: string;
+  heureFin: string;
+  statut: string;
+  dateDebut: string;
+  dateFin: string;
+  jours: number[];
+  dates: string[];
+};
 
+function lireChampsRecurrence(
+  formData: FormData,
+): { error: string } | { champs: ChampsRecurrence } {
   const heureDebut = String(formData.get("heure_debut") ?? "");
   const heureFin = String(formData.get("heure_fin") ?? "");
   const statut = String(formData.get("statut") ?? "libre");
@@ -72,22 +79,130 @@ export async function ajouterCreneauxRecurrents(
     return { error: "Aucune date ne correspond à ces critères." };
   }
 
-  const rows = dates.map((date) => ({
-    professional_id: user.id,
+  return { champs: { heureDebut, heureFin, statut, dateDebut, dateFin, jours, dates } };
+}
+
+async function genererCreneaux(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  professionalId: string,
+  recurrenceId: string,
+  champs: ChampsRecurrence,
+) {
+  const rows = champs.dates.map((date) => ({
+    professional_id: professionalId,
     date,
-    heure_debut: heureDebut,
-    heure_fin: heureFin,
-    statut,
+    heure_debut: champs.heureDebut,
+    heure_fin: champs.heureFin,
+    statut: champs.statut,
+    recurrence_id: recurrenceId,
   }));
 
-  const { error } = await supabase
+  return supabase
     .from("availability_slots")
     .upsert(rows, { onConflict: "professional_id,date,heure_debut", ignoreDuplicates: true });
+}
 
+export async function ajouterCreneauxRecurrents(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const lu = lireChampsRecurrence(formData);
+  if ("error" in lu) return { error: lu.error };
+  const { champs } = lu;
+
+  const { data: recurrence, error: erreurSerie } = await supabase
+    .from("slot_recurrences")
+    .insert({
+      professional_id: user.id,
+      jours: champs.jours,
+      heure_debut: champs.heureDebut,
+      heure_fin: champs.heureFin,
+      statut: champs.statut,
+      date_debut: champs.dateDebut,
+      date_fin: champs.dateFin,
+    })
+    .select("id")
+    .single();
+
+  if (erreurSerie) return { error: erreurSerie.message };
+
+  const { error } = await genererCreneaux(supabase, user.id, recurrence.id, champs);
   if (error) return { error: error.message };
 
   revalidatePath("/planning");
   return { success: true };
+}
+
+export async function modifierCreneauxRecurrents(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const recurrenceId = String(formData.get("recurrence_id") ?? "");
+  if (!recurrenceId) return { error: "Récurrence introuvable." };
+
+  const lu = lireChampsRecurrence(formData);
+  if ("error" in lu) return { error: lu.error };
+  const { champs } = lu;
+
+  const { data: recurrence, error: erreurSerie } = await supabase
+    .from("slot_recurrences")
+    .update({
+      jours: champs.jours,
+      heure_debut: champs.heureDebut,
+      heure_fin: champs.heureFin,
+      statut: champs.statut,
+      date_debut: champs.dateDebut,
+      date_fin: champs.dateFin,
+    })
+    .eq("id", recurrenceId)
+    .eq("professional_id", user.id)
+    .select("id")
+    .single();
+
+  if (erreurSerie || !recurrence) return { error: "Récurrence introuvable." };
+
+  // On régénère la série : les créneaux libres sont remplacés, les créneaux
+  // déjà réservés (occupés) sont toujours conservés tels quels.
+  await supabase
+    .from("availability_slots")
+    .delete()
+    .eq("recurrence_id", recurrenceId)
+    .eq("professional_id", user.id)
+    .neq("statut", "occupe");
+
+  const { error } = await genererCreneaux(supabase, user.id, recurrenceId, champs);
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+export async function supprimerRecurrence(formData: FormData) {
+  const { supabase, user } = await requireUser("professionnel");
+  const recurrenceId = String(formData.get("recurrence_id") ?? "");
+  if (!recurrenceId) return;
+
+  // Supprime les créneaux libres de la série ; les créneaux occupés restent
+  // (une garde y est réservée) et sont détachés de la série par le
+  // "on delete set null" du schéma.
+  await supabase
+    .from("availability_slots")
+    .delete()
+    .eq("recurrence_id", recurrenceId)
+    .eq("professional_id", user.id)
+    .neq("statut", "occupe");
+
+  await supabase
+    .from("slot_recurrences")
+    .delete()
+    .eq("id", recurrenceId)
+    .eq("professional_id", user.id);
+
+  revalidatePath("/planning");
 }
 
 export async function supprimerCreneau(formData: FormData) {
@@ -154,11 +269,29 @@ export async function refuserRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
 
+  const { data: reservation } = await supabase
+    .from("recurring_bookings")
+    .select("parent_id, statut")
+    .eq("id", recurrenceId)
+    .eq("professional_id", user.id)
+    .single();
+
   await supabase
     .from("recurring_bookings")
     .update({ statut: "annule" })
     .eq("id", recurrenceId)
     .eq("professional_id", user.id);
+
+  // Refuser une demande en attente est silencieux ; annuler une récurrence
+  // déjà validée prévient le parent, qui comptait sur cette garde.
+  if (reservation?.statut === "actif") {
+    await notifierUtilisateur(
+      supabase,
+      reservation.parent_id,
+      "Réservation récurrente annulée",
+      "<p>Le professionnel a annulé votre réservation récurrente sur Liams. Connectez-vous pour organiser une autre garde.</p>",
+    );
+  }
 
   revalidatePath("/planning");
 }

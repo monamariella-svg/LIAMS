@@ -55,6 +55,9 @@ export default async function TableauDeBordPage() {
           >
             Trouver un professionnel
           </Link>
+          <Link href="/planning" className="mt-3 self-center text-sm text-liams-navy underline">
+            Mon planning
+          </Link>
         </>
       )}
       {profile?.role === "professionnel" && (

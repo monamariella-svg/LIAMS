@@ -5,6 +5,7 @@ import { startOfWeek, todayISO } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { demanderReservationUrgente } from "./actions";
 import { RecurrenceForm } from "./RecurrenceForm";
+import { MesRecurrences } from "./MesRecurrences";
 
 export default async function PlanningProfessionnelPage({
   params,
@@ -27,7 +28,7 @@ export default async function PlanningProfessionnelPage({
 
   if (!reseau || reseau.statut !== "accepte") redirect("/reseau");
 
-  const [{ data: slots }, { data: mesReservations }] = await Promise.all([
+  const [{ data: slots }, { data: mesReservations }, { data: mesRecurrences }] = await Promise.all([
     supabase
       .from("availability_slots")
       .select("*")
@@ -40,6 +41,13 @@ export default async function PlanningProfessionnelPage({
       .eq("professional_id", professionalId)
       .eq("parent_id", user.id)
       .eq("statut", "confirme"),
+    supabase
+      .from("recurring_bookings")
+      .select("*")
+      .eq("professional_id", professionalId)
+      .eq("parent_id", user.id)
+      .in("statut", ["en_attente", "actif"])
+      .order("created_at"),
   ]);
 
   if (!slots) notFound();
@@ -88,6 +96,8 @@ export default async function PlanningProfessionnelPage({
             ]),
         )}
       />
+
+      <MesRecurrences professionalId={professionalId} reservations={mesRecurrences ?? []} />
 
       <RecurrenceForm professionalId={professionalId} />
     </div>

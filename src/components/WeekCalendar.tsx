@@ -35,6 +35,7 @@ export function WeekCalendar({
   addSlotAction,
   slotFooters,
   mesReservationIds,
+  statutLabels,
 }: {
   weekStart: string;
   basePath: string;
@@ -49,6 +50,9 @@ export function WeekCalendar({
    * calendrier — on affiche "Votre réservation" au lieu du générique "Occupé",
    * sans jamais révéler qui a réservé les créneaux des autres parents. */
   mesReservationIds?: string[];
+  /** Remplace les étiquettes par défaut des statuts (ex. le planning du
+   * parent affiche "Garde confirmée" plutôt que "Régulier"). */
+  statutLabels?: Record<string, string>;
 }) {
   const [jourOuvert, setJourOuvert] = useState<string | null>(null);
   const noopAction = async () => undefined;
@@ -116,7 +120,7 @@ export function WeekCalendar({
                   <span className="text-[10px] opacity-70">
                     {slot.statut === "occupe" && mesReservations.has(slot.id)
                       ? "Votre réservation"
-                      : STATUT_LABELS[slot.statut]}
+                      : (statutLabels?.[slot.statut] ?? STATUT_LABELS[slot.statut])}
                   </span>
                 </div>
               ))}

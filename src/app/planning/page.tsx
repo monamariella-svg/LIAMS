@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUserParmi } from "@/lib/auth";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { startOfWeek, todayISO } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
-import { CreneauRecurrentForm } from "./CreneauRecurrentForm";
+import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
+import { RecurrencesList } from "./RecurrencesList";
+import { PlanningParent } from "./PlanningParent";
 import {
   ajouterCreneau,
   supprimerCreneau,
@@ -18,30 +20,42 @@ export default async function PlanningPage({
 }: {
   searchParams: Promise<{ week?: string }>;
 }) {
-  const { supabase, user } = await requireUser("professionnel");
+  const { supabase, user, role } = await requireUserParmi(["professionnel", "parent"]);
   const { week } = await searchParams;
   const weekStart = startOfWeek(week || todayISO());
 
-  const [{ data: slots }, { data: urgentBookings }, { data: recurringBookings }] = await Promise.all([
-    supabase
-      .from("availability_slots")
-      .select("*")
-      .eq("professional_id", user.id)
-      .order("date")
-      .order("heure_debut"),
-    supabase
-      .from("urgent_bookings")
-      .select("*")
-      .eq("professional_id", user.id)
-      .eq("statut", "en_attente"),
-    supabase
-      .from("recurring_bookings")
-      .select("*")
-      .eq("professional_id", user.id)
-      .eq("statut", "en_attente"),
-  ]);
+  if (role === "parent") {
+    return <PlanningParent supabase={supabase} userId={user.id} weekStart={weekStart} />;
+  }
+
+  const [{ data: slots }, { data: urgentBookings }, { data: recurringBookings }, { data: recurrences }] =
+    await Promise.all([
+      supabase
+        .from("availability_slots")
+        .select("*")
+        .eq("professional_id", user.id)
+        .order("date")
+        .order("heure_debut"),
+      supabase
+        .from("urgent_bookings")
+        .select("*")
+        .eq("professional_id", user.id)
+        .eq("statut", "en_attente"),
+      supabase
+        .from("recurring_bookings")
+        .select("*")
+        .eq("professional_id", user.id)
+        .in("statut", ["en_attente", "actif"]),
+      supabase
+        .from("slot_recurrences")
+        .select("*")
+        .eq("professional_id", user.id)
+        .order("created_at"),
+    ]);
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
+  const demandesRecurrentes = (recurringBookings ?? []).filter((r) => r.statut === "en_attente");
+  const recurrencesActives = (recurringBookings ?? []).filter((r) => r.statut === "actif");
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
@@ -82,11 +96,11 @@ export default async function PlanningPage({
         </section>
       )}
 
-      {(recurringBookings ?? []).length > 0 && (
+      {demandesRecurrentes.length > 0 && (
         <section className="rounded-xl border-2 border-liams-teal/30 bg-liams-teal/5 p-6">
           <h2 className="text-base font-semibold text-liams-navy">Demandes de réservation récurrente</h2>
           <div className="mt-3 flex flex-col gap-2">
-            {(recurringBookings ?? []).map((rec) => (
+            {demandesRecurrentes.map((rec) => (
               <div key={rec.id} className="flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm">
                 <span>
                   Tous les {JOURS_SEMAINE[rec.jour_semaine]} {rec.heure_debut}–{rec.heure_fin}
@@ -105,6 +119,30 @@ export default async function PlanningPage({
                     </button>
                   </form>
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {recurrencesActives.length > 0 && (
+        <section className="rounded-xl border border-gray-200 p-6">
+          <h2 className="text-base font-semibold text-liams-navy">Réservations récurrentes validées</h2>
+          <div className="mt-3 flex flex-col gap-2">
+            {recurrencesActives.map((rec) => (
+              <div key={rec.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2 text-sm">
+                <span>
+                  Tous les {JOURS_SEMAINE[rec.jour_semaine]} {rec.heure_debut}–{rec.heure_fin}
+                </span>
+                <form action={refuserRecurrence}>
+                  <input type="hidden" name="recurrence_id" value={rec.id} />
+                  <button
+                    type="submit"
+                    className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                  >
+                    Annuler la récurrence
+                  </button>
+                </form>
               </div>
             ))}
           </div>
@@ -145,6 +183,8 @@ export default async function PlanningPage({
           )}
         />
       </section>
+
+      <RecurrencesList recurrences={(recurrences ?? []) as RecurrenceExistante[]} />
 
       <CreneauRecurrentForm />
     </div>
