@@ -76,6 +76,7 @@ export default async function ProfilProfessionnelPage() {
 
       <ProfessionalProfileForm
         tarifHoraire={profile?.tarif_horaire ?? null}
+        tarifHoraireUrgence={profile?.tarif_horaire_urgence ?? null}
         adresse={profile?.adresse ?? ""}
         rayonKm={profile?.rayon_km ?? 15}
         accueilADomicile={profile?.accueil_a_domicile ?? false}

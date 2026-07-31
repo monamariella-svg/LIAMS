@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { JOURS_SEMAINE, type CreneauDisponibilite } from "@/lib/disponibilites";
+import { AdresseAutocomplete } from "@/components/AdresseAutocomplete";
 import { updateParentProfile } from "./actions";
 
 export function ParentProfileForm({
@@ -20,11 +21,11 @@ export function ParentProfileForm({
 
       <label className="flex flex-col gap-1 text-sm">
         Adresse
-        <input
+        <AdresseAutocomplete
           name="adresse"
           defaultValue={adresse}
           placeholder="Ville ou adresse"
-          className="rounded-lg border border-gray-300 px-4 py-2"
+          className="w-full rounded-lg border border-gray-300 px-4 py-2"
         />
       </label>
 

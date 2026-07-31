@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import { AdresseAutocomplete } from "@/components/AdresseAutocomplete";
 import { updateProfessionalProfile } from "./actions";
 
 export function ProfessionalProfileForm({
   tarifHoraire,
+  tarifHoraireUrgence,
   adresse,
   rayonKm,
   accueilADomicile,
   specialisations,
 }: {
   tarifHoraire: number | null;
+  tarifHoraireUrgence: number | null;
   adresse: string;
   rayonKm: number;
   accueilADomicile: boolean;
@@ -36,6 +39,21 @@ export function ProfessionalProfileForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
+          Tarif horaire en urgence (€/h)
+          <input
+            name="tarif_horaire_urgence"
+            type="number"
+            step="0.5"
+            min="0"
+            defaultValue={tarifHoraireUrgence ?? ""}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+          <span className="text-xs text-gray-500">
+            Appliqué aux créneaux « Urgence », demandés entre 20 h et 2 h avant
+            leur début. Sans valeur, votre tarif habituel s&apos;applique.
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
           Rayon d&apos;intervention (km)
           <input
             name="rayon_km"
@@ -49,11 +67,11 @@ export function ProfessionalProfileForm({
 
       <label className="flex flex-col gap-1 text-sm">
         Zone géographique d&apos;intervention
-        <input
+        <AdresseAutocomplete
           name="adresse"
           defaultValue={adresse}
           placeholder="Ville ou adresse"
-          className="rounded-lg border border-gray-300 px-4 py-2"
+          className="w-full rounded-lg border border-gray-300 px-4 py-2"
         />
       </label>
 

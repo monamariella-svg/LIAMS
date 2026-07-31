@@ -472,55 +472,6 @@ export async function supprimerBesoinRecurrence(formData: FormData) {
 // lui convient pas et valide le reste.
 // ------------------------------------------------------------------------
 
-export async function demanderCreneaux(
-  _prevState: PlanningFormState,
-  formData: FormData,
-): Promise<PlanningFormState> {
-  const { supabase, user } = await requireUser("parent");
-
-  const professionalId = String(formData.get("professional_id") ?? "");
-  const slotIds = formData.getAll("slot_ids").map((s) => String(s)).filter(Boolean);
-
-  if (!professionalId) return { error: "Professionnel introuvable." };
-  if (slotIds.length === 0) return { error: "Cochez au moins un créneau." };
-
-  // On ne demande que des créneaux réellement encore libres.
-  const { data: slotsValides } = await supabase
-    .from("availability_slots")
-    .select("id")
-    .in("id", slotIds)
-    .eq("professional_id", professionalId)
-    .neq("statut", "occupe");
-
-  if (!slotsValides?.length) {
-    return { error: "Ces créneaux ne sont plus disponibles." };
-  }
-
-  const { data: demande, error: erreurDemande } = await supabase
-    .from("demandes_creneaux")
-    .insert({ parent_id: user.id, professional_id: professionalId, statut: "en_attente" })
-    .select("id")
-    .single();
-
-  if (erreurDemande) return { error: erreurDemande.message };
-
-  const { error } = await supabase.from("demande_creneau_lignes").insert(
-    slotsValides.map((s) => ({ demande_id: demande.id, slot_id: s.id, statut: "propose" })),
-  );
-
-  if (error) return { error: error.message };
-
-  await notifierUtilisateur(
-    supabase,
-    professionalId,
-    "Nouvelle demande de créneaux",
-    `<p>Un parent vous demande ${slotsValides.length} créneau(x) sur Liams. Connectez-vous à votre planning pour choisir ceux que vous acceptez.</p>`,
-  );
-
-  revalidatePath("/planning");
-  return { success: true };
-}
-
 export async function traiterDemandeCreneaux(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
 

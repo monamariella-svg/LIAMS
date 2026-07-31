@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { startOfWeek, todayISO } from "@/lib/calendar";
-import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
-import { demanderReservationUrgente } from "./actions";
+import { isoWeekday, startOfWeek, todayISO } from "@/lib/calendar";
+import { disponibiliteCreneau } from "@/lib/urgence";
+import { PlanningReservable, type CreneauReservable } from "./PlanningReservable";
 import { RecurrenceForm } from "./RecurrenceForm";
 import { MesRecurrences } from "./MesRecurrences";
 
@@ -28,7 +28,14 @@ export default async function PlanningProfessionnelPage({
 
   if (!reseau || reseau.statut !== "accepte") redirect("/reseau");
 
-  const [{ data: slots }, { data: mesReservations }, { data: mesRecurrences }] = await Promise.all([
+  const [
+    { data: slots },
+    { data: mesReservations },
+    { data: mesRecurrences },
+    { data: besoins },
+    { data: besoinRecurrences },
+    { data: demandesEnCours },
+  ] = await Promise.all([
     supabase
       .from("availability_slots")
       .select("*")
@@ -48,11 +55,76 @@ export default async function PlanningProfessionnelPage({
       .eq("parent_id", user.id)
       .in("statut", ["en_attente", "actif"])
       .order("created_at"),
+    supabase.from("besoins_garde").select("date, heure_debut, heure_fin").eq("parent_id", user.id),
+    supabase
+      .from("besoin_recurrences")
+      .select("jours, heure_debut, heure_fin, date_debut, date_fin")
+      .eq("parent_id", user.id),
+    supabase
+      .from("demandes_creneaux")
+      .select("id")
+      .eq("parent_id", user.id)
+      .eq("professional_id", professionalId)
+      .eq("statut", "en_attente"),
   ]);
 
   if (!slots) notFound();
 
   const mesSlotIds = new Set((mesReservations ?? []).map((r) => r.slot_id));
+
+  // Créneaux déjà demandés : on ne les repropose pas à la sélection, la
+  // demande précédente étant encore en attente chez le professionnel.
+  const { data: lignesEnCours } = (demandesEnCours ?? []).length
+    ? await supabase
+        .from("demande_creneau_lignes")
+        .select("slot_id")
+        .in("demande_id", (demandesEnCours ?? []).map((d) => d.id))
+        .eq("statut", "propose")
+    : { data: [] };
+  const slotsDejaDemandes = new Set((lignesEnCours ?? []).map((l) => l.slot_id));
+
+  // Un créneau "correspond" à un besoin déclaré s'il tombe le même jour et
+  // recoupe sa plage horaire — ceux-là sont pré-cochés.
+  const chevauche = (aDebut: string, aFin: string, bDebut: string, bFin: string) =>
+    aDebut < bFin && bDebut < aFin;
+
+  const correspondAUnBesoin = (slot: { date: string; heure_debut: string; heure_fin: string }) => {
+    const ponctuel = (besoins ?? []).some(
+      (b) => b.date === slot.date && chevauche(b.heure_debut, b.heure_fin, slot.heure_debut, slot.heure_fin),
+    );
+    if (ponctuel) return true;
+
+    const jour = isoWeekday(slot.date);
+    return (besoinRecurrences ?? []).some(
+      (rec) =>
+        rec.jours.includes(jour) &&
+        slot.date >= rec.date_debut &&
+        slot.date <= rec.date_fin &&
+        chevauche(rec.heure_debut, rec.heure_fin, slot.heure_debut, slot.heure_fin),
+    );
+  };
+
+  const aujourdHui = todayISO();
+  const maintenant = new Date();
+  const reservables: CreneauReservable[] = slots
+    .filter(
+      (slot) =>
+        slot.statut !== "occupe" && slot.date >= aujourdHui && !slotsDejaDemandes.has(slot.id),
+    )
+    .map((slot) => {
+      const { demandable, raison } = disponibiliteCreneau(slot, maintenant);
+      return {
+        id: slot.id,
+        date: slot.date,
+        heure_debut: slot.heure_debut,
+        heure_fin: slot.heure_fin,
+        statut: slot.statut,
+        correspondBesoin: correspondAUnBesoin(slot),
+        demandable,
+        raison,
+      };
+    });
+  const nbCorrespondants = reservables.filter((c) => c.demandable && c.correspondBesoin).length;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
@@ -61,6 +133,12 @@ export default async function PlanningProfessionnelPage({
       </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Planning du professionnel</h1>
 
+      <p className="text-xs text-gray-500">
+        Cochez les créneaux qui vous conviennent, puis envoyez votre demande.
+        {nbCorrespondants > 0 &&
+          " Ceux qui correspondent à vos besoins déclarés sont déjà cochés."}{" "}
+        Les créneaux d&apos;urgence ne se demandent qu&apos;entre 20 h et 2 h avant leur début.
+      </p>
       <p className="text-xs text-gray-500">
         <span className="mr-3 inline-flex items-center gap-1">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-teal" /> Régulier
@@ -73,28 +151,12 @@ export default async function PlanningProfessionnelPage({
         </span>
       </p>
 
-      <WeekCalendar
+      <PlanningReservable
+        professionalId={professionalId}
         weekStart={weekStart}
-        basePath={`/reseau/${professionalId}`}
-        slots={slots as CalendarSlot[]}
+        slots={slots}
         mesReservationIds={[...mesSlotIds]}
-        slotFooters={Object.fromEntries(
-          slots
-            .filter((slot) => slot.statut === "libre_urgence")
-            .map((slot) => [
-              slot.id,
-              <form key={slot.id} action={demanderReservationUrgente}>
-                <input type="hidden" name="slot_id" value={slot.id} />
-                <input type="hidden" name="professional_id" value={professionalId} />
-                <button
-                  type="submit"
-                  className="rounded-full bg-liams-orange px-2 py-0.5 text-[10px] font-medium text-white hover:opacity-90"
-                >
-                  Réserver
-                </button>
-              </form>,
-            ]),
-        )}
+        reservables={reservables}
       />
 
       <MesRecurrences professionalId={professionalId} reservations={mesRecurrences ?? []} />

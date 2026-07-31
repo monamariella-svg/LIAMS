@@ -17,7 +17,6 @@ import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
 import { CriteresForm, type CriteresParent, type BadgeOption } from "./CriteresForm";
-import { DemandeCreneauxForm } from "./DemandeCreneauxForm";
 import { ajouterBesoin, supprimerBesoin } from "./actions";
 
 type SlotJoint = { id: string; date: string; heure_debut: string; heure_fin: string };
@@ -356,15 +355,10 @@ export async function PlanningParent({
     distanceKm: number | null,
     noteMoyenne: number | null,
     couverture?: { datesCouvertes: number; totalDates: number },
-    creneauxProposables?: CreneauCalendrier[],
     cle?: string,
   ) => {
     const profil = profilsParId.get(professionalId);
     const statutReseau = reseauStatuts.get(professionalId);
-    // La demande de créneaux suppose une relation de confiance établie : hors
-    // réseau, le parent passe d'abord par "Ajouter à mon réseau".
-    const creneauxDemandables =
-      statutReseau === "accepte" && creneauxProposables?.length ? creneauxProposables : null;
     return (
       <div key={cle ?? professionalId} className="rounded-lg border border-gray-100 px-4 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -379,6 +373,11 @@ export async function PlanningParent({
             {profil?.tarif_horaire ? `${profil.tarif_horaire} €/h` : "Tarif non renseigné"}
             {distanceKm !== null && ` — ${distanceKm.toFixed(1)} km`}
           </span>
+          {profil?.tarif_horaire_urgence && (
+            <span className="rounded-full bg-liams-orange/10 px-2 py-0.5 text-xs text-liams-orange">
+              {profil.tarif_horaire_urgence} €/h en urgence
+            </span>
+          )}
           {noteMoyenne && <span className="text-xs text-liams-orange">★ {noteMoyenne}</span>}
           {couverture && couverture.totalDates > 1 && (
             <span className="text-xs text-gray-500">
@@ -394,14 +393,12 @@ export async function PlanningParent({
             Voir le profil
           </Link>
           {statutReseau === "accepte" ? (
-            !creneauxDemandables && (
-              <Link
-                href={`/reseau/${professionalId}`}
-                className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-              >
-                Voir son planning
-              </Link>
-            )
+            <Link
+              href={`/reseau/${professionalId}`}
+              className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+            >
+              Réserver ses créneaux
+            </Link>
           ) : statutReseau === "en_attente" ? (
             <span className="text-xs text-gray-400">Demande de réseau envoyée</span>
           ) : (
@@ -417,17 +414,6 @@ export async function PlanningParent({
           )}
         </span>
         </div>
-        {creneauxDemandables && (
-          <DemandeCreneauxForm
-            professionalId={professionalId}
-            creneaux={creneauxDemandables.map((c) => ({
-              id: c.id,
-              date: c.date,
-              heure_debut: c.heure_debut,
-              heure_fin: c.heure_fin,
-            }))}
-          />
-        )}
       </div>
     );
   };
@@ -514,7 +500,6 @@ export async function PlanningParent({
                         prop.distanceKm,
                         prop.candidat.note_moyenne,
                         { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
-                        prop.creneaux,
                         `${groupe.cle}-${prop.candidat.user_id}`,
                       ),
                     )}

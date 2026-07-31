@@ -108,8 +108,12 @@ export default async function ReseauPage() {
                   </form>
                 </div>
               )}
-              {professionnel?.tarif_horaire && isParent && (
-                <p className="text-xs text-gray-400">{professionnel.tarif_horaire} €/h</p>
+              {isParent && professionnel?.tarif_horaire && (
+                <p className="text-xs text-gray-400">
+                  {professionnel.tarif_horaire} €/h
+                  {professionnel.tarif_horaire_urgence &&
+                    ` · ${professionnel.tarif_horaire_urgence} €/h en urgence`}
+                </p>
               )}
             </div>
           );

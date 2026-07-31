@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { notifierUtilisateur } from "@/lib/notify";
+import { disponibiliteCreneau } from "@/lib/urgence";
 
 export type ReseauFormState = { error?: string; success?: boolean } | undefined;
 
@@ -28,6 +29,69 @@ export async function demanderReservationUrgente(formData: FormData) {
   );
 
   revalidatePath(`/reseau/${professionalId}`);
+}
+
+/** Demande groupée : le parent coche plusieurs créneaux du planning du
+ * professionnel et les demande d'un seul envoi. Le professionnel arbitre
+ * ensuite créneau par créneau depuis son propre planning. */
+export async function demanderCreneaux(
+  _prevState: ReseauFormState,
+  formData: FormData,
+): Promise<ReseauFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const slotIds = formData.getAll("slot_ids").map((s) => String(s)).filter(Boolean);
+
+  if (!professionalId) return { error: "Professionnel introuvable." };
+  if (slotIds.length === 0) return { error: "Cochez au moins un créneau." };
+
+  // On ne demande que des créneaux réellement encore libres...
+  const { data: slotsLibres } = await supabase
+    .from("availability_slots")
+    .select("id, date, heure_debut, statut")
+    .in("id", slotIds)
+    .eq("professional_id", professionalId)
+    .neq("statut", "occupe");
+
+  // ...et dont la fenêtre de réservation est ouverte : la vérification de
+  // l'interface ne suffit pas, une page laissée ouverte peut la franchir.
+  const maintenant = new Date();
+  const slotsValides = (slotsLibres ?? []).filter(
+    (s) => disponibiliteCreneau(s, maintenant).demandable,
+  );
+
+  if (!slotsValides.length) {
+    return {
+      error:
+        "Ces créneaux ne sont plus disponibles — un créneau d'urgence se demande entre 20 h et 2 h avant son début.",
+    };
+  }
+
+  const { data: demande, error: erreurDemande } = await supabase
+    .from("demandes_creneaux")
+    .insert({ parent_id: user.id, professional_id: professionalId, statut: "en_attente" })
+    .select("id")
+    .single();
+
+  if (erreurDemande) return { error: erreurDemande.message };
+
+  const { error } = await supabase.from("demande_creneau_lignes").insert(
+    slotsValides.map((s) => ({ demande_id: demande.id, slot_id: s.id, statut: "propose" })),
+  );
+
+  if (error) return { error: error.message };
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Nouvelle demande de créneaux",
+    `<p>Un parent vous demande ${slotsValides.length} créneau(x) sur Liams. Connectez-vous à votre planning pour choisir ceux que vous acceptez.</p>`,
+  );
+
+  revalidatePath(`/reseau/${professionalId}`);
+  revalidatePath("/planning");
+  return { success: true };
 }
 
 export async function demanderReservationRecurrente(

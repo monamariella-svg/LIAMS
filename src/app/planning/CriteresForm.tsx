@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { AdresseAutocomplete } from "@/components/AdresseAutocomplete";
 import { enregistrerCriteres } from "./actions";
 
 export type CriteresParent = {
@@ -103,12 +104,15 @@ export function CriteresForm({
           </div>
 
           {modeZone === "ville" ? (
-            <input
-              name="ville"
-              defaultValue={criteres?.ville ?? ""}
-              placeholder="Ville (ex : Créteil)"
-              className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-80"
-            />
+            <div className="mt-2 sm:w-80">
+              <AdresseAutocomplete
+                name="ville"
+                villesUniquement
+                defaultValue={criteres?.ville ?? ""}
+                placeholder="Ville (ex : Créteil)"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
           ) : (
             <>
               <p className="mt-2 text-xs text-gray-500">
@@ -116,17 +120,17 @@ export function CriteresForm({
                 chemin vous seront proposés.
               </p>
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                <input
+                <AdresseAutocomplete
                   name="trajet_depart"
                   defaultValue={criteres?.trajet_depart ?? ""}
                   placeholder="Point de départ"
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
-                <input
+                <AdresseAutocomplete
                   name="trajet_arrivee"
                   defaultValue={criteres?.trajet_arrivee ?? ""}
                   placeholder="Point d'arrivée"
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
             </>

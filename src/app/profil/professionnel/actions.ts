@@ -40,6 +40,7 @@ export async function updateProfessionalProfile(
   const { supabase, user } = await requireUser("professionnel");
 
   const tarifHoraire = Number(formData.get("tarif_horaire") ?? 0) || null;
+  const tarifHoraireUrgence = Number(formData.get("tarif_horaire_urgence") ?? 0) || null;
   const adresse = String(formData.get("adresse") ?? "").trim();
   const rayonKm = Number(formData.get("rayon_km") ?? 15) || 15;
   const accueilADomicile = formData.get("accueil_a_domicile") === "on";
@@ -53,6 +54,7 @@ export async function updateProfessionalProfile(
   const { error } = await supabase.from("professional_profiles").upsert({
     user_id: user.id,
     tarif_horaire: tarifHoraire,
+    tarif_horaire_urgence: tarifHoraireUrgence,
     adresse,
     rayon_km: rayonKm,
     accueil_a_domicile: accueilADomicile,
