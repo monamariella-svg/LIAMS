@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { AdresseAutocomplete } from "@/components/AdresseAutocomplete";
+import { BadgeIcone } from "@/components/BadgeIcone";
 import { enregistrerCriteres } from "./actions";
 
 export type CriteresParent = {
@@ -14,15 +15,6 @@ export type CriteresParent = {
 };
 
 export type BadgeOption = { code: string; label: string };
-
-// Badges liés à l'accueil des Xtras — mis en avant visuellement.
-const XTRA_BADGES = [
-  "accueil_xtras_ordinaires",
-  "specialiste_tsa",
-  "specialiste_tdah",
-  "specialiste_dys",
-  "specialiste_handicap_moteur",
-];
 
 /** Les critères qui ne dépendent pas d'un besoin en particulier : ils sont
  * enregistrés sur le profil parent et s'appliquent à toutes les propositions
@@ -60,19 +52,16 @@ export function CriteresForm({
             {badgesCatalogue.map((badge) => (
               <label
                 key={badge.code}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
-                  XTRA_BADGES.includes(badge.code)
-                    ? "border-liams-teal text-liams-teal"
-                    : "border-gray-300 text-gray-600"
-                }`}
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-gray-200 py-1 pl-1 pr-3 text-xs hover:border-liams-navy has-[:checked]:border-liams-navy has-[:checked]:bg-liams-navy/5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-liams-navy"
               >
                 <input
                   type="checkbox"
                   name="badges"
                   value={badge.code}
                   defaultChecked={criteres?.badges_souhaites?.includes(badge.code)}
+                  className="sr-only"
                 />
-                {badge.label}
+                <BadgeIcone code={badge.code} label={badge.label} taille={28} />
               </label>
             ))}
           </div>

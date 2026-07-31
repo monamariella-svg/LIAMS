@@ -13,6 +13,7 @@ import {
 } from "@/lib/matching";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { PhotoProfil } from "@/components/PhotoProfil";
+import { BadgeIcone } from "@/components/BadgeIcone";
 import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
@@ -85,7 +86,9 @@ export async function PlanningParent({
       .select("id, professional_id, date, heure_debut, heure_fin, statut")
       .gte("date", todayISO()),
     supabase.from("parent_networks").select("professional_id, statut").eq("parent_id", userId),
-    supabase.from("badges").select("code, label").eq("source", "manuel").order("code"),
+    // Tous les badges : les manuels alimentent les filtres, mais il faut
+    // aussi le libellé de l'automatique (coup de cœur) pour l'afficher.
+    supabase.from("badges").select("code, label, source").order("code"),
     supabase.from("professional_photos").select("professional_id, fichier_url").order("ordre"),
     supabase
       .from("demandes_creneaux")
@@ -258,6 +261,9 @@ export async function PlanningParent({
     badges: (p.professional_badges ?? []).map((b: { badge_code: string }) => b.badge_code),
   }));
   const profilsParId = new Map((professionnels ?? []).map((p) => [p.user_id, p]));
+  const labelsBadges = new Map<string, string>(
+    (badgesCatalogue ?? []).map((b) => [b.code, b.label]),
+  );
   const reseauStatuts = new Map<string, string>(
     (reseau ?? []).map((r) => [r.professional_id, r.statut]),
   );
@@ -378,6 +384,17 @@ export async function PlanningParent({
               {profil.tarif_horaire_urgence} €/h en urgence
             </span>
           )}
+          <span className="flex items-center gap-1">
+            {(profil?.professional_badges ?? []).map((b: { badge_code: string }) => (
+              <BadgeIcone
+                key={b.badge_code}
+                code={b.badge_code}
+                label={labelsBadges.get(b.badge_code) ?? b.badge_code}
+                compact
+                taille={26}
+              />
+            ))}
+          </span>
           {noteMoyenne && <span className="text-xs text-liams-orange">★ {noteMoyenne}</span>}
           {couverture && couverture.totalDates > 1 && (
             <span className="text-xs text-gray-500">
@@ -427,7 +444,9 @@ export async function PlanningParent({
 
       <CriteresForm
         criteres={(parentProfile ?? null) as CriteresParent | null}
-        badgesCatalogue={(badgesCatalogue ?? []) as BadgeOption[]}
+        badgesCatalogue={
+          (badgesCatalogue ?? []).filter((b) => b.source === "manuel") as BadgeOption[]
+        }
         ouvertParDefaut={aucunBesoin}
       />
 

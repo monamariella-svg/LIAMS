@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BadgeIcone } from "@/components/BadgeIcone";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { demanderMiseEnRelation } from "../../messages/actions";
 
@@ -95,14 +96,13 @@ export default async function ProfessionnelPublicPage({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {(badges ?? []).map((b) => (
-          <span
+          <BadgeIcone
             key={b.badge_code}
-            className="rounded-full bg-liams-teal/10 px-3 py-1 text-xs font-medium text-liams-teal"
-          >
-            {(b.badges as unknown as { label: string } | null)?.label ?? b.badge_code}
-          </span>
+            code={b.badge_code}
+            label={(b.badges as unknown as { label: string } | null)?.label ?? b.badge_code}
+          />
         ))}
         {profile.note_moyenne && (
           <span className="rounded-full bg-liams-orange/10 px-3 py-1 text-xs font-medium text-liams-orange">

@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { parseDisponibilitesFromFormData } from "@/lib/disponibilites";
 import { geocodeAdresse } from "@/lib/geocoding";
 
 export type ProfilFormState = { error?: string; success?: boolean } | undefined;
@@ -14,13 +13,13 @@ export async function updateParentProfile(
   const { supabase, user } = await requireUser("parent");
 
   const adresse = String(formData.get("adresse") ?? "").trim();
-  const disponibilites = parseDisponibilitesFromFormData(formData);
   const coords = await geocodeAdresse(adresse);
 
+  // Les besoins de garde vivent désormais dans besoins_garde (calendrier du
+  // parent) : la colonne disponibilites du profil n'est plus alimentée.
   const { error } = await supabase.from("parent_profiles").upsert({
     user_id: user.id,
     adresse,
-    disponibilites,
     ...(coords && { latitude: coords.latitude, longitude: coords.longitude }),
   });
 

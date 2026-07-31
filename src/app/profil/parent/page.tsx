@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import type { CreneauDisponibilite } from "@/lib/disponibilites";
 import { ParentProfileForm } from "./ParentProfileForm";
 import { AjouterEnfantForm } from "./AjouterEnfantForm";
 import { FicheSanteForm } from "./FicheSanteForm";
@@ -26,10 +25,7 @@ export default async function ProfilParentPage() {
       </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil parent</h1>
 
-      <ParentProfileForm
-        adresse={parentProfile?.adresse ?? ""}
-        disponibilites={(parentProfile?.disponibilites as CreneauDisponibilite[]) ?? []}
-      />
+      <ParentProfileForm adresse={parentProfile?.adresse ?? ""} />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-liams-navy">Mes enfants</h2>
