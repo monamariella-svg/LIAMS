@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { NavigationBas } from "@/components/NavigationBas";
 import { requireUser } from "@/lib/auth";
 import { isoWeekday, startOfWeek, todayISO } from "@/lib/calendar";
 import { disponibiliteCreneau } from "@/lib/urgence";
@@ -128,9 +128,6 @@ export default async function PlanningProfessionnelPage({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
-      <Link href="/reseau" className="self-start text-sm text-liams-navy underline">
-        ← Retour à mon réseau
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Planning du professionnel</h1>
 
       <p className="text-xs text-gray-500">
@@ -162,6 +159,8 @@ export default async function PlanningProfessionnelPage({
       <MesRecurrences professionalId={professionalId} reservations={mesRecurrences ?? []} />
 
       <RecurrenceForm professionalId={professionalId} />
+
+      <NavigationBas />
     </div>
   );
 }

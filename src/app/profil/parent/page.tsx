@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { NavigationBas } from "@/components/NavigationBas";
 import { ParentProfileForm } from "./ParentProfileForm";
 import { AjouterEnfantForm } from "./AjouterEnfantForm";
 import { FicheSanteForm } from "./FicheSanteForm";
@@ -20,9 +21,6 @@ export default async function ProfilParentPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil parent</h1>
 
       <ParentProfileForm adresse={parentProfile?.adresse ?? ""} />
@@ -51,6 +49,22 @@ export default async function ProfilParentPage() {
 
         <AjouterEnfantForm />
       </section>
+
+      <section className="rounded-xl bg-liams-teal/5 p-6 text-center">
+        <p className="text-sm text-liams-navy">
+          Votre profil est prêt ? Déclarez vos besoins de garde dans votre
+          calendrier : les professionnels disponibles vous seront proposés
+          automatiquement.
+        </p>
+        <Link
+          href="/planning"
+          className="mt-4 inline-block rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90"
+        >
+          Commencer votre recherche
+        </Link>
+      </section>
+
+      <NavigationBas />
     </div>
   );
 }

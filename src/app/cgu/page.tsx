@@ -1,12 +1,9 @@
-import Link from "next/link";
+import { NavigationBas } from "@/components/NavigationBas";
 
 export default function CguPage() {
   return (
     <div className="mx-auto max-w-2xl flex-1 px-6 py-16">
-      <Link href="/" className="text-sm text-liams-navy underline">
-        ← Retour à l&apos;accueil
-      </Link>
-      <h1 className="mt-4 text-2xl font-semibold text-liams-navy">
+      <h1 className="text-2xl font-semibold text-liams-navy">
         Conditions Générales d&apos;Utilisation
       </h1>
       <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -99,6 +96,8 @@ export default function CguPage() {
           </p>
         </section>
       </div>
+
+      <NavigationBas href="/" label="Accueil" />
     </div>
   );
 }

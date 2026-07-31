@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NavigationBas } from "@/components/NavigationBas";
 import { FeedbackForm } from "./FeedbackForm";
 
 export default async function FeedbackPage() {
@@ -29,6 +30,8 @@ export default async function FeedbackPage() {
           Aucun questionnaire à remplir pour le moment.
         </p>
       )}
+
+      <NavigationBas />
     </div>
   );
 }

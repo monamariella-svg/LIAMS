@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NavigationBas } from "@/components/NavigationBas";
 import { MessageForm } from "./MessageForm";
 import { AvisForm } from "./AvisForm";
 import { demanderAjoutReseau } from "../../reseau/actions";
@@ -96,6 +97,8 @@ export default async function ConversationPage({
           <AvisForm matchId={matchId} estParent={isParent} />
         )}
       </div>
+
+      <NavigationBas />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import { AdresseAutocomplete } from "@/components/AdresseAutocomplete";
 import { updateParentProfile } from "./actions";
 
@@ -21,14 +20,6 @@ export function ParentProfileForm({ adresse }: { adresse: string }) {
           className="w-full rounded-lg border border-gray-300 px-4 py-2"
         />
       </label>
-
-      <p className="text-xs text-gray-500">
-        Vos besoins de garde se déclarent désormais dans{" "}
-        <Link href="/planning" className="text-liams-navy underline">
-          votre calendrier
-        </Link>
-        , date par date ou en série hebdomadaire.
-      </p>
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       {state?.success && <p className="text-sm text-liams-teal">Profil enregistré.</p>}

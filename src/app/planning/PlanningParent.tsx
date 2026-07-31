@@ -14,6 +14,7 @@ import {
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { PhotoProfil } from "@/components/PhotoProfil";
 import { BadgeIcone } from "@/components/BadgeIcone";
+import { NavigationBas } from "@/components/NavigationBas";
 import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
@@ -437,9 +438,6 @@ export async function PlanningParent({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
-      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mes besoins de garde</h1>
 
       <CriteresForm
@@ -557,6 +555,8 @@ export async function PlanningParent({
           </div>
         )}
       </details>
+
+      <NavigationBas />
     </div>
   );
 }

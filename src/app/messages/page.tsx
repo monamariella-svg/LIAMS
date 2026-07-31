@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { NavigationBas } from "@/components/NavigationBas";
 import { repondreMiseEnRelation } from "./actions";
 
 const STATUT_LABELS: Record<string, string> = {
@@ -38,9 +39,6 @@ export default async function MessagesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mes mises en relation</h1>
 
       {(matches ?? []).length === 0 && (
@@ -100,6 +98,8 @@ export default async function MessagesPage() {
           );
         })}
       </div>
+
+      <NavigationBas />
     </div>
   );
 }

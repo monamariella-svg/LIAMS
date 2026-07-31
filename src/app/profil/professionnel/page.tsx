@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { computeProfessionalProgress } from "@/lib/progress";
+import { NavigationBas } from "@/components/NavigationBas";
 import { ProfessionalProfileForm } from "./ProfessionalProfileForm";
 import { DocumentUploadForm } from "./DocumentUploadForm";
 import { QualificationXtraForm } from "./QualificationXtraForm";
@@ -52,9 +52,6 @@ export default async function ProfilProfessionnelPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil professionnel</h1>
 
       <div className="rounded-xl border border-gray-200 p-4">
@@ -123,6 +120,8 @@ export default async function ProfilProfessionnelPage() {
       <QualificationXtraForm qualification={qualification} />
 
       <SoumettreDossierForm />
+
+      <NavigationBas />
     </div>
   );
 }

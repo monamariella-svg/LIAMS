@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
+import { NavigationBas } from "@/components/NavigationBas";
 
 const STATUT_LABELS: Record<string, { label: string; className: string }> = {
   en_attente: { label: "En attente", className: "bg-amber-100 text-amber-800" },
@@ -17,9 +18,6 @@ export default async function AdminProfessionnelsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-12">
-      <Link href="/admin" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord admin
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Professionnels</h1>
 
       <div className="flex flex-col gap-2">
@@ -39,6 +37,8 @@ export default async function AdminProfessionnelsPage() {
           );
         })}
       </div>
+
+      <NavigationBas href="/admin" label="Tableau de bord admin" />
     </div>
   );
 }

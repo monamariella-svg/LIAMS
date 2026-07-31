@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { BadgeIcone } from "@/components/BadgeIcone";
+import { NavigationBas } from "@/components/NavigationBas";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { demanderMiseEnRelation } from "../../messages/actions";
 
@@ -57,11 +58,6 @@ export default async function ProfessionnelPublicPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      {currentUser && (
-        <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-          ← Retour au tableau de bord
-        </Link>
-      )}
       <PhotoCarousel urls={photoUrls} />
 
       {currentUserRole === "parent" && (
@@ -154,6 +150,14 @@ export default async function ProfessionnelPublicPage({
             <img key={url} src={url} alt="" className="h-28 w-full rounded-lg object-cover" />
           ))}
         </div>
+      )}
+
+      {/* Un visiteur non connecté n'a pas de tableau de bord : on le ramène
+          à l'accueil plutôt que vers une page qui le renverrait au login. */}
+      {currentUser ? (
+        <NavigationBas />
+      ) : (
+        <NavigationBas href="/" label="Accueil" />
       )}
     </div>
   );

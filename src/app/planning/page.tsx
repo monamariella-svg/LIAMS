@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { requireUserParmi } from "@/lib/auth";
+import { NavigationBas } from "@/components/NavigationBas";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { startOfWeek, todayISO } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
@@ -98,9 +98,6 @@ export default async function PlanningPage({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
-      <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
-        ← Retour au tableau de bord
-      </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon planning</h1>
 
       <DemandesRecues demandes={demandesRecues} />
@@ -228,6 +225,8 @@ export default async function PlanningPage({
       <RecurrencesList recurrences={(recurrences ?? []) as RecurrenceExistante[]} />
 
       <CreneauRecurrentForm />
+
+      <NavigationBas />
     </div>
   );
 }
