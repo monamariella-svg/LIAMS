@@ -78,8 +78,8 @@ function PourParents() {
           partagez un profil enrichi pour votre enfant.
         </Etape>
       </ol>
-      <Link href="/recherche" className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90">
-        Trouver un professionnel
+      <Link href="/planning" className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90">
+        Déclarer mes besoins de garde
       </Link>
     </>
   );

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { notifierUtilisateur } from "@/lib/notify";
+import { geocodeAdresse } from "@/lib/geocoding";
 import { computeRecurringDates, parseISODate } from "@/lib/calendar";
 
 export type PlanningFormState = { error?: string; success?: boolean } | undefined;
@@ -215,6 +216,73 @@ export async function supprimerCreneau(formData: FormData) {
     .eq("professional_id", user.id)
     .neq("statut", "occupe");
   revalidatePath("/planning");
+}
+
+// ------------------------------------------------------------------------
+// Critères de recherche du parent — préférences stables (badges, rayon,
+// trajet) appliquées à toutes les propositions de profils, par opposition au
+// "quand" qui est porté par chaque besoin.
+// ------------------------------------------------------------------------
+
+export async function enregistrerCriteres(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const badges = formData.getAll("badges").map((b) => String(b));
+  const rayonBrut = String(formData.get("rayon") ?? "").trim();
+  const trajetDepart = String(formData.get("trajet_depart") ?? "").trim();
+  const trajetArrivee = String(formData.get("trajet_arrivee") ?? "").trim();
+
+  // Le trajet n'a de sens qu'avec ses deux extrémités ; on ne géocode que si
+  // l'adresse a changé pour éviter un appel réseau à chaque enregistrement.
+  const { data: profilActuel } = await supabase
+    .from("parent_profiles")
+    .select("trajet_depart, trajet_depart_latitude, trajet_depart_longitude, trajet_arrivee, trajet_arrivee_latitude, trajet_arrivee_longitude")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const departInchange = profilActuel?.trajet_depart === trajetDepart;
+  const arriveeInchangee = profilActuel?.trajet_arrivee === trajetArrivee;
+
+  const coordsDepart = !trajetDepart
+    ? null
+    : departInchange && profilActuel?.trajet_depart_latitude !== null
+      ? {
+          latitude: profilActuel!.trajet_depart_latitude,
+          longitude: profilActuel!.trajet_depart_longitude,
+        }
+      : await geocodeAdresse(trajetDepart);
+
+  const coordsArrivee = !trajetArrivee
+    ? null
+    : arriveeInchangee && profilActuel?.trajet_arrivee_latitude !== null
+      ? {
+          latitude: profilActuel!.trajet_arrivee_latitude,
+          longitude: profilActuel!.trajet_arrivee_longitude,
+        }
+      : await geocodeAdresse(trajetArrivee);
+
+  if (trajetDepart && !coordsDepart) return { error: "Adresse de départ introuvable." };
+  if (trajetArrivee && !coordsArrivee) return { error: "Adresse d'arrivée introuvable." };
+
+  const { error } = await supabase.from("parent_profiles").upsert({
+    user_id: user.id,
+    badges_souhaites: badges,
+    rayon_km: rayonBrut ? Number(rayonBrut) : null,
+    trajet_depart: trajetDepart || null,
+    trajet_depart_latitude: coordsDepart?.latitude ?? null,
+    trajet_depart_longitude: coordsDepart?.longitude ?? null,
+    trajet_arrivee: trajetArrivee || null,
+    trajet_arrivee_latitude: coordsArrivee?.latitude ?? null,
+    trajet_arrivee_longitude: coordsArrivee?.longitude ?? null,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
 }
 
 // ------------------------------------------------------------------------

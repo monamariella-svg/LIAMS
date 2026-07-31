@@ -5,14 +5,17 @@ import { computeRecurringDates, formatDateLabel, getWeekDates, isoWeekday, today
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import {
   proposerPourBesoin,
+  matchProfessionnels,
   type ProfessionalCandidat,
   type PropositionPro,
   type CreneauCalendrier,
+  type CritereRecherche,
 } from "@/lib/matching";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
+import { CriteresForm, type CriteresParent, type BadgeOption } from "./CriteresForm";
 import { ajouterBesoin, supprimerBesoin } from "./actions";
 
 type SlotJoint = { id: string; date: string; heure_debut: string; heure_fin: string };
@@ -46,6 +49,7 @@ export async function PlanningParent({
     { data: professionnels },
     { data: tousCreneaux },
     { data: reseau },
+    { data: badgesCatalogue },
   ] = await Promise.all([
     supabase
       .from("besoins_garde")
@@ -71,13 +75,14 @@ export async function PlanningParent({
       .eq("parent_id", userId)
       .in("statut", ["en_attente", "actif"])
       .order("created_at"),
-    supabase.from("parent_profiles").select("latitude, longitude").eq("user_id", userId).maybeSingle(),
+    supabase.from("parent_profiles").select("*").eq("user_id", userId).maybeSingle(),
     supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
     supabase
       .from("availability_slots")
       .select("professional_id, date, heure_debut, heure_fin, statut")
       .gte("date", todayISO()),
     supabase.from("parent_networks").select("professional_id, statut").eq("parent_id", userId),
+    supabase.from("badges").select("code, label").eq("source", "manuel").order("code"),
   ]);
 
   const slots: CalendarSlot[] = [];
@@ -170,9 +175,6 @@ export async function PlanningParent({
     });
     footers[besoin.id] = (
       <span className="flex items-center gap-2">
-        <Link href="/recherche" className="text-[10px] underline opacity-70 hover:opacity-100">
-          Trouver un pro
-        </Link>
         <form action={supprimerBesoin}>
           <input type="hidden" name="besoin_id" value={besoin.id} />
           <button type="submit" className="text-[10px] underline opacity-70 hover:opacity-100">
@@ -206,10 +208,37 @@ export async function PlanningParent({
   const reseauStatuts = new Map<string, string>(
     (reseau ?? []).map((r) => [r.professional_id, r.statut]),
   );
-  const origine =
-    parentProfile?.latitude && parentProfile?.longitude
-      ? { latitude: parentProfile.latitude, longitude: parentProfile.longitude }
+  // Critères stables du parent (badges, distance, trajet) : saisis une fois,
+  // appliqués à toutes les propositions. Un trajet renseigné remplace la
+  // recherche autour du domicile.
+  const trajetDepart =
+    parentProfile?.trajet_depart_latitude != null && parentProfile?.trajet_depart_longitude != null
+      ? {
+          latitude: parentProfile.trajet_depart_latitude,
+          longitude: parentProfile.trajet_depart_longitude,
+        }
       : undefined;
+  const trajetArrivee =
+    parentProfile?.trajet_arrivee_latitude != null && parentProfile?.trajet_arrivee_longitude != null
+      ? {
+          latitude: parentProfile.trajet_arrivee_latitude,
+          longitude: parentProfile.trajet_arrivee_longitude,
+        }
+      : undefined;
+  const origine =
+    trajetDepart && trajetArrivee
+      ? undefined
+      : parentProfile?.latitude && parentProfile?.longitude
+        ? { latitude: parentProfile.latitude, longitude: parentProfile.longitude }
+        : undefined;
+
+  const criteresParent: CritereRecherche = {
+    origine,
+    trajetDepart,
+    trajetArrivee,
+    rayonKm: parentProfile?.rayon_km ?? undefined,
+    badgesRequis: parentProfile?.badges_souhaites ?? [],
+  };
 
   // Les pros du réseau passent devant, sans jamais exclure les autres profils.
   const prioriserReseau = (propositions: PropositionPro[]) => {
@@ -229,7 +258,7 @@ export async function PlanningParent({
       cle: `serie-${rec.id}`,
       titre: `Tous les ${rec.jours.map((j: number) => JOURS_SEMAINE[j]).join(", ")} ${rec.heure_debut.slice(0, 5)}–${rec.heure_fin.slice(0, 5)}`,
       propositions: prioriserReseau(
-        proposerPourBesoin(candidats, dates, rec.heure_debut, rec.heure_fin, { origine }),
+        proposerPourBesoin(candidats, dates, rec.heure_debut, rec.heure_fin, criteresParent),
       ),
     });
   }
@@ -242,17 +271,105 @@ export async function PlanningParent({
       cle: `besoin-${besoin.id}`,
       titre: `${JOURS_SEMAINE[isoWeekday(besoin.date)]} ${formatDateLabel(besoin.date)} ${besoin.heure_debut.slice(0, 5)}–${besoin.heure_fin.slice(0, 5)}`,
       propositions: prioriserReseau(
-        proposerPourBesoin(candidats, [besoin.date], besoin.heure_debut, besoin.heure_fin, { origine }),
+        proposerPourBesoin(candidats, [besoin.date], besoin.heure_debut, besoin.heure_fin, criteresParent),
       ),
     });
   }
+
+  // Catalogue complet filtré par les seuls critères du parent (sans contrainte
+  // de date) : permet d'explorer les profils même sans besoin déclaré.
+  const catalogue = matchProfessionnels(candidats, criteresParent);
+  const catalogueTrie = [
+    ...catalogue.filter((m) => reseauStatuts.get(m.candidat.user_id) === "accepte"),
+    ...catalogue.filter((m) => reseauStatuts.get(m.candidat.user_id) !== "accepte"),
+  ];
+
+  const aucunBesoin = (besoins ?? []).length === 0 && (besoinRecurrences ?? []).length === 0;
+
+  // Une carte de professionnel, partagée par les propositions et le catalogue.
+  const carteProfessionnel = (
+    professionalId: string,
+    distanceKm: number | null,
+    noteMoyenne: number | null,
+    couverture?: { datesCouvertes: number; totalDates: number },
+  ) => {
+    const profil = profilsParId.get(professionalId);
+    const statutReseau = reseauStatuts.get(professionalId);
+    return (
+      <div
+        key={professionalId}
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-4 py-2 text-sm"
+      >
+        <span className="flex flex-wrap items-center gap-2">
+          {statutReseau === "accepte" && (
+            <span className="rounded-full bg-liams-teal/10 px-2 py-0.5 text-xs font-medium text-liams-teal">
+              Votre réseau
+            </span>
+          )}
+          <span className="font-medium text-liams-navy">
+            {profil?.tarif_horaire ? `${profil.tarif_horaire} €/h` : "Tarif non renseigné"}
+            {distanceKm !== null && ` — ${distanceKm.toFixed(1)} km`}
+          </span>
+          {noteMoyenne && <span className="text-xs text-liams-orange">★ {noteMoyenne}</span>}
+          {couverture && couverture.totalDates > 1 && (
+            <span className="text-xs text-gray-500">
+              couvre {couverture.datesCouvertes}/{couverture.totalDates} dates
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-2">
+          <Link
+            href={`/professionnels/${professionalId}`}
+            className="text-xs text-liams-navy underline"
+          >
+            Voir le profil
+          </Link>
+          {statutReseau === "accepte" ? (
+            <Link
+              href={`/reseau/${professionalId}`}
+              className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+            >
+              Réserver
+            </Link>
+          ) : statutReseau === "en_attente" ? (
+            <span className="text-xs text-gray-400">Demande de réseau envoyée</span>
+          ) : (
+            <form action={demanderAjoutReseau}>
+              <input type="hidden" name="professional_id" value={professionalId} />
+              <button
+                type="submit"
+                className="rounded-full bg-liams-orange px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+              >
+                Ajouter à mon réseau
+              </button>
+            </form>
+          )}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
       <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
         ← Retour au tableau de bord
       </Link>
-      <h1 className="text-2xl font-semibold text-liams-navy">Mon planning</h1>
+      <h1 className="text-2xl font-semibold text-liams-navy">Mes besoins de garde</h1>
+
+      <CriteresForm
+        criteres={(parentProfile ?? null) as CriteresParent | null}
+        badgesCatalogue={(badgesCatalogue ?? []) as BadgeOption[]}
+        ouvertParDefaut={aucunBesoin}
+      />
+
+      {aucunBesoin && (
+        <p className="rounded-xl bg-liams-teal/5 px-6 py-4 text-sm text-liams-navy">
+          Commencez par indiquer quand vous avez besoin d&apos;une garde : cliquez sur
+          « + Ajouter » dans le calendrier ci-dessous pour un besoin ponctuel, ou
+          utilisez le formulaire « Besoins récurrents » si c&apos;est chaque semaine.
+          Les professionnels disponibles vous seront alors proposés automatiquement.
+        </p>
+      )}
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mes besoins de garde</h2>
@@ -303,80 +420,19 @@ export async function PlanningParent({
                 <h3 className="text-sm font-semibold text-liams-navy">{groupe.titre}</h3>
                 {groupe.propositions.length === 0 ? (
                   <p className="mt-1 text-xs text-gray-500">
-                    Aucun professionnel disponible pour l&apos;instant —{" "}
-                    <Link href="/recherche" className="underline">
-                      élargissez votre recherche
-                    </Link>
-                    .
+                    Aucun professionnel disponible pour l&apos;instant — élargissez vos
+                    critères ci-dessus, ou parcourez tous les profils en bas de page.
                   </p>
                 ) : (
                   <div className="mt-2 flex flex-col gap-2">
-                    {groupe.propositions.map((prop) => {
-                      const profil = profilsParId.get(prop.candidat.user_id);
-                      const statutReseau = reseauStatuts.get(prop.candidat.user_id);
-                      return (
-                        <div
-                          key={prop.candidat.user_id}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-4 py-2 text-sm"
-                        >
-                          <span className="flex flex-wrap items-center gap-2">
-                            {statutReseau === "accepte" && (
-                              <span className="rounded-full bg-liams-teal/10 px-2 py-0.5 text-xs font-medium text-liams-teal">
-                                Votre réseau
-                              </span>
-                            )}
-                            <span className="font-medium text-liams-navy">
-                              {profil?.tarif_horaire
-                                ? `${profil.tarif_horaire} €/h`
-                                : "Tarif non renseigné"}
-                              {prop.distanceKm !== null && ` — ${prop.distanceKm.toFixed(1)} km`}
-                            </span>
-                            {prop.candidat.note_moyenne && (
-                              <span className="text-xs text-liams-orange">
-                                ★ {prop.candidat.note_moyenne}
-                              </span>
-                            )}
-                            {prop.totalDates > 1 && (
-                              <span className="text-xs text-gray-500">
-                                couvre {prop.datesCouvertes}/{prop.totalDates} dates
-                              </span>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            <Link
-                              href={`/professionnels/${prop.candidat.user_id}`}
-                              className="text-xs text-liams-navy underline"
-                            >
-                              Voir le profil
-                            </Link>
-                            {statutReseau === "accepte" ? (
-                              <Link
-                                href={`/reseau/${prop.candidat.user_id}`}
-                                className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-                              >
-                                Réserver
-                              </Link>
-                            ) : statutReseau === "en_attente" ? (
-                              <span className="text-xs text-gray-400">Demande de réseau envoyée</span>
-                            ) : (
-                              <form action={demanderAjoutReseau}>
-                                <input
-                                  type="hidden"
-                                  name="professional_id"
-                                  value={prop.candidat.user_id}
-                                />
-                                <button
-                                  type="submit"
-                                  className="rounded-full bg-liams-orange px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-                                >
-                                  Ajouter à mon réseau
-                                </button>
-                              </form>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {groupe.propositions.map((prop) =>
+                      carteProfessionnel(
+                        prop.candidat.user_id,
+                        prop.distanceKm,
+                        prop.candidat.note_moyenne,
+                        { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
+                      ),
+                    )}
                   </div>
                 )}
               </div>
@@ -391,6 +447,27 @@ export async function PlanningParent({
       />
 
       <CreneauRecurrentForm variante="besoins" />
+
+      <details className="rounded-xl border border-gray-200 p-6 [&[open]>summary]:mb-4">
+        <summary className="cursor-pointer text-base font-semibold text-liams-navy">
+          Tous les professionnels
+          <span className="ml-2 text-xs font-normal text-gray-500">
+            ({catalogueTrie.length} correspondant à vos critères)
+          </span>
+        </summary>
+        {catalogueTrie.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Aucun professionnel ne correspond à vos critères — essayez d&apos;élargir la
+            distance ou de retirer un accompagnement souhaité.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {catalogueTrie.map((m) =>
+              carteProfessionnel(m.candidat.user_id, m.distanceKm, m.candidat.note_moyenne),
+            )}
+          </div>
+        )}
+      </details>
     </div>
   );
 }

@@ -123,7 +123,7 @@ export function proposerPourBesoin(
   dates: string[],
   heureDebut: string,
   heureFin: string,
-  criteres: Pick<CritereRecherche, "origine" | "rayonKm"> = {},
+  criteres: Omit<CritereRecherche, "jour" | "heureDebut" | "heureFin"> = {},
 ): PropositionPro[] {
   const datesSet = new Set(dates);
 
@@ -144,10 +144,15 @@ export function proposerPourBesoin(
     })
     .filter(({ couvertes }) => couvertes > 0)
     .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
+    .filter(({ candidat }) =>
+      criteres.badgesRequis?.length
+        ? criteres.badgesRequis.every((b) => candidat.badges.includes(b))
+        : true,
+    )
     .map(({ candidat, couvertes, distance }) => ({
       candidat,
       distanceKm: distance,
-      score: scoreQualitatif(candidat, {}),
+      score: scoreQualitatif(candidat, criteres),
       datesCouvertes: couvertes,
       totalDates: dates.length,
     }))

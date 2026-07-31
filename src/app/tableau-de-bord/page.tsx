@@ -50,13 +50,10 @@ export default async function TableauDeBordPage() {
             Compléter mon profil parent
           </Link>
           <Link
-            href="/recherche"
+            href="/planning"
             className="mt-3 self-center text-sm text-liams-navy underline"
           >
-            Trouver un professionnel
-          </Link>
-          <Link href="/planning" className="mt-3 self-center text-sm text-liams-navy underline">
-            Mon planning
+            Mes besoins de garde et les professionnels disponibles
           </Link>
         </>
       )}
