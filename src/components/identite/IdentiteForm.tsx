@@ -6,9 +6,11 @@ import { enregistrerIdentite } from "./actions";
 export function IdentiteForm({
   prenom,
   nom,
+  telephone,
 }: {
   prenom: string | null;
   nom: string | null;
+  telephone: string | null;
 }) {
   const [state, formAction, pending] = useActionState(
     enregistrerIdentite,
@@ -40,6 +42,23 @@ export function IdentiteForm({
             />
           </label>
         </div>
+
+        <label className="flex flex-col gap-1 text-sm sm:w-1/2 sm:pr-2">
+          Téléphone
+          <input
+            name="telephone"
+            type="tel"
+            required
+            placeholder="06 12 34 56 78"
+            defaultValue={telephone ?? ""}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+          <span className="text-xs text-gray-500">
+            Indispensable pour vous joindre en cas d&apos;urgence pendant une
+            garde. Visible uniquement des personnes avec qui vous avez une mise
+            en relation acceptée.
+          </span>
+        </label>
 
         {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
         {state?.success && (

@@ -17,9 +17,24 @@ export async function enregistrerIdentite(
 
   const prenom = String(formData.get("prenom") ?? "").trim();
   const nom = String(formData.get("nom") ?? "").trim();
+  const telephoneSaisi = String(formData.get("telephone") ?? "").trim();
 
   if (!prenom || !nom) {
     return { error: "Prénom et nom requis." };
+  }
+
+  // Espaces, points et tirets sont des habitudes d'écriture, pas des erreurs.
+  const telephone = telephoneSaisi.replace(/[\s.\-]/g, "");
+  if (!telephone) {
+    return {
+      error: "Téléphone requis : il doit être possible de vous joindre en cas d'urgence.",
+    };
+  }
+  if (!/^(?:\+\d{6,14}|0\d{9})$/.test(telephone)) {
+    return {
+      error:
+        "Numéro invalide : 10 chiffres commençant par 0, ou format international (+33...).",
+    };
   }
 
   const { error } = await supabase
@@ -27,6 +42,12 @@ export async function enregistrerIdentite(
     .upsert({ user_id: user.id, prenom, nom }, { onConflict: "user_id" });
 
   if (error) return { error: error.message };
+
+  const { error: erreurTelephone } = await supabase
+    .from("coordonnees")
+    .upsert({ user_id: user.id, telephone }, { onConflict: "user_id" });
+
+  if (erreurTelephone) return { error: erreurTelephone.message };
 
   // Le prénom s'affiche sur le tableau de bord : il doit y être à jour.
   revalidatePath("/tableau-de-bord");

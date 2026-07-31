@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { computeProfessionalProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
+import { BarreProgression } from "@/components/BarreProgression";
 import { IdentiteForm } from "@/components/identite/IdentiteForm";
 import { DonneesContractuellesForm } from "@/components/identite/DonneesContractuellesForm";
 import { ProfessionalProfileForm } from "./ProfessionalProfileForm";
@@ -22,6 +23,7 @@ export default async function ProfilProfessionnelPage() {
     { data: prompts },
     { data: identite },
     { data: donneesContractuelles },
+    { data: coordonnees },
   ] = await Promise.all([
       supabase.from("professional_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
@@ -54,13 +56,20 @@ export default async function ProfilProfessionnelPage() {
         .select("*")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("coordonnees")
+        .select("telephone")
+        .eq("user_id", user.id)
+        .maybeSingle(),
     ]);
 
   const documentsParType = (docType: DocumentType) =>
     (documents ?? []).filter((d) => d.type === docType);
 
   const { pourcentage, manquants } = computeProfessionalProgress({
-    infosGeneralesCompletes: Boolean(profile?.adresse && profile?.tarif_horaire),
+    infosGeneralesCompletes: Boolean(
+      profile?.adresse && profile?.tarif_horaire && coordonnees?.telephone,
+    ),
     casierDepose: documentsParType("casier").length > 0,
     cvDepose: documentsParType("cv").length > 0,
     diplomeOuCertificatDepose:
@@ -76,24 +85,10 @@ export default async function ProfilProfessionnelPage() {
       <IdentiteForm
         prenom={identite?.prenom ?? null}
         nom={identite?.nom ?? null}
+        telephone={coordonnees?.telephone ?? null}
       />
 
-      <div className="rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-liams-navy">Profil complété à {pourcentage}%</span>
-        </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-          <div
-            className="h-full rounded-full bg-liams-orange transition-all"
-            style={{ width: `${pourcentage}%` }}
-          />
-        </div>
-        {manquants.length > 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            Il manque : {manquants.join(", ")}.
-          </p>
-        )}
-      </div>
+      <BarreProgression pourcentage={pourcentage} manquants={manquants} />
 
       <ProfessionalProfileForm
         tarifHoraire={profile?.tarif_horaire ?? null}

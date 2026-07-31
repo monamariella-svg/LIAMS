@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { computeParentProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
+import { BarreProgression } from "@/components/BarreProgression";
 import { IdentiteForm } from "@/components/identite/IdentiteForm";
 import { ParentProfileForm } from "./ParentProfileForm";
 import { AjouterEnfantForm } from "./AjouterEnfantForm";
@@ -11,8 +13,12 @@ import { SupprimerEnfantButton } from "./SupprimerEnfantButton";
 export default async function ProfilParentPage() {
   const { supabase, user } = await requireUser("parent");
 
-  const [{ data: parentProfile }, { data: enfants }, { data: identite }] =
-    await Promise.all([
+  const [
+    { data: parentProfile },
+    { data: enfants },
+    { data: identite },
+    { data: coordonnees },
+  ] = await Promise.all([
       supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
         .from("enfants")
@@ -24,15 +30,31 @@ export default async function ProfilParentPage() {
         .select("prenom, nom")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("coordonnees")
+        .select("telephone")
+        .eq("user_id", user.id)
+        .maybeSingle(),
     ]);
+
+  const { pourcentage, manquants } = computeParentProgress({
+    identiteComplete: Boolean(identite?.prenom && identite?.nom),
+    telephoneRenseigne: Boolean(coordonnees?.telephone),
+    adresseRenseignee: Boolean(parentProfile?.adresse),
+    auMoinsUnEnfant: (enfants?.length ?? 0) > 0,
+    fichesSanteCompletes: (enfants ?? []).every((e) => e.enfant_fiche_sante),
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil parent</h1>
 
+      <BarreProgression pourcentage={pourcentage} manquants={manquants} />
+
       <IdentiteForm
         prenom={identite?.prenom ?? null}
         nom={identite?.nom ?? null}
+        telephone={coordonnees?.telephone ?? null}
       />
 
       <ParentProfileForm adresse={parentProfile?.adresse ?? ""} />
