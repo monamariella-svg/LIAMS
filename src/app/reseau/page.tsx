@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PhotoProfil } from "@/components/PhotoProfil";
 import { repondreReseau } from "./actions";
 
 const STATUT_LABELS: Record<string, string> = {
@@ -35,6 +36,21 @@ export default async function ReseauPage() {
     : { data: [] };
   const professionnelsParId = new Map((professionalProfiles ?? []).map((p) => [p.user_id, p]));
 
+  const { data: photos } = professionalIds.length
+    ? await supabase
+        .from("professional_photos")
+        .select("professional_id, fichier_url")
+        .in("professional_id", professionalIds)
+        .order("ordre")
+    : { data: [] };
+  // La requête est triée par ordre : la première photo vue pour un pro est la sienne.
+  const photoParPro = new Map<string, string>();
+  for (const photo of photos ?? []) {
+    if (!photoParPro.has(photo.professional_id)) {
+      photoParPro.set(photo.professional_id, photo.fichier_url);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
       <Link href="/tableau-de-bord" className="self-start text-sm text-liams-navy underline">
@@ -55,11 +71,14 @@ export default async function ReseauPage() {
           const professionnel = professionnelsParId.get(reseau.professional_id);
           return (
             <div key={`${reseau.parent_id}-${reseau.professional_id}`} className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
-              <div>
-                <p className="font-medium text-liams-navy">
-                  {isParent ? "Professionnel" : "Parent"}
-                </p>
-                <p className="text-xs text-gray-500">{STATUT_LABELS[reseau.statut] ?? reseau.statut}</p>
+              <div className="flex items-center gap-3">
+                {isParent && <PhotoProfil fichierUrl={photoParPro.get(reseau.professional_id)} />}
+                <div>
+                  <p className="font-medium text-liams-navy">
+                    {isParent ? "Professionnel" : "Parent"}
+                  </p>
+                  <p className="text-xs text-gray-500">{STATUT_LABELS[reseau.statut] ?? reseau.statut}</p>
+                </div>
               </div>
 
               {reseau.statut === "accepte" && isParent && (

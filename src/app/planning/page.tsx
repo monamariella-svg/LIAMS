@@ -6,6 +6,7 @@ import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
 import { PlanningParent } from "./PlanningParent";
+import { DemandesRecues, type DemandeRecue } from "./DemandesRecues";
 import {
   ajouterCreneau,
   supprimerCreneau,
@@ -28,32 +29,70 @@ export default async function PlanningPage({
     return <PlanningParent supabase={supabase} userId={user.id} weekStart={weekStart} />;
   }
 
-  const [{ data: slots }, { data: urgentBookings }, { data: recurringBookings }, { data: recurrences }] =
-    await Promise.all([
-      supabase
-        .from("availability_slots")
-        .select("*")
-        .eq("professional_id", user.id)
-        .order("date")
-        .order("heure_debut"),
-      supabase
-        .from("urgent_bookings")
-        .select("*")
-        .eq("professional_id", user.id)
-        .eq("statut", "en_attente"),
-      supabase
-        .from("recurring_bookings")
-        .select("*")
-        .eq("professional_id", user.id)
-        .in("statut", ["en_attente", "actif"]),
-      supabase
-        .from("slot_recurrences")
-        .select("*")
-        .eq("professional_id", user.id)
-        .order("created_at"),
-    ]);
+  const [
+    { data: slots },
+    { data: urgentBookings },
+    { data: recurringBookings },
+    { data: recurrences },
+    { data: demandes },
+  ] = await Promise.all([
+    supabase
+      .from("availability_slots")
+      .select("*")
+      .eq("professional_id", user.id)
+      .order("date")
+      .order("heure_debut"),
+    supabase
+      .from("urgent_bookings")
+      .select("*")
+      .eq("professional_id", user.id)
+      .eq("statut", "en_attente"),
+    supabase
+      .from("recurring_bookings")
+      .select("*")
+      .eq("professional_id", user.id)
+      .in("statut", ["en_attente", "actif"]),
+    supabase
+      .from("slot_recurrences")
+      .select("*")
+      .eq("professional_id", user.id)
+      .order("created_at"),
+    supabase
+      .from("demandes_creneaux")
+      .select("id")
+      .eq("professional_id", user.id)
+      .eq("statut", "en_attente")
+      .order("created_at"),
+  ]);
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
+
+  // Lignes des demandes groupées en attente, avec le détail de chaque créneau.
+  const { data: lignesDemandes } = (demandes ?? []).length
+    ? await supabase
+        .from("demande_creneau_lignes")
+        .select("demande_id, slot:availability_slots(id, date, heure_debut, heure_fin)")
+        .in("demande_id", (demandes ?? []).map((d) => d.id))
+        .eq("statut", "propose")
+    : { data: [] };
+
+  type CreneauDemande = { id: string; date: string; heure_debut: string; heure_fin: string };
+  const creneauxParDemande = new Map<string, CreneauDemande[]>();
+  for (const ligne of lignesDemandes ?? []) {
+    const slot = ligne.slot as unknown as CreneauDemande | null;
+    if (!slot) continue;
+    const liste = creneauxParDemande.get(ligne.demande_id) ?? [];
+    liste.push(slot);
+    creneauxParDemande.set(ligne.demande_id, liste);
+  }
+  const demandesRecues: DemandeRecue[] = (demandes ?? [])
+    .map((d) => ({
+      id: d.id,
+      creneaux: (creneauxParDemande.get(d.id) ?? []).sort(
+        (a, b) => a.date.localeCompare(b.date) || a.heure_debut.localeCompare(b.heure_debut),
+      ),
+    }))
+    .filter((d) => d.creneaux.length > 0);
   const demandesRecurrentes = (recurringBookings ?? []).filter((r) => r.statut === "en_attente");
   const recurrencesActives = (recurringBookings ?? []).filter((r) => r.statut === "actif");
 
@@ -63,6 +102,8 @@ export default async function PlanningPage({
         ← Retour au tableau de bord
       </Link>
       <h1 className="text-2xl font-semibold text-liams-navy">Mon planning</h1>
+
+      <DemandesRecues demandes={demandesRecues} />
 
       {(urgentBookings ?? []).length > 0 && (
         <section className="rounded-xl border-2 border-liams-orange/30 bg-liams-orange/5 p-6">

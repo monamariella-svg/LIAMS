@@ -18,6 +18,7 @@ export type CritereRecherche = {
 };
 
 export type CreneauCalendrier = {
+  id: string;
   date: string;
   heure_debut: string;
   heure_fin: string;
@@ -111,6 +112,9 @@ export type PropositionPro = {
   /** Nombre de dates du besoin où le professionnel a un créneau libre couvrant. */
   datesCouvertes: number;
   totalDates: number;
+  /** Les créneaux effectivement couvrants, pour que le parent puisse en
+   * cocher plusieurs et les demander en une seule fois. */
+  creneaux: CreneauCalendrier[];
 };
 
 /** Propose des professionnels pour un besoin du parent, défini par des dates
@@ -129,32 +133,31 @@ export function proposerPourBesoin(
 
   return candidats
     .map((candidat) => {
-      const couvertes = new Set(
-        candidat.slots
-          .filter(
-            (s) =>
-              s.statut !== "occupe" &&
-              datesSet.has(s.date) &&
-              s.heure_debut <= heureDebut &&
-              s.heure_fin >= heureFin,
-          )
-          .map((s) => s.date),
-      ).size;
-      return { candidat, couvertes, distance: distanceCandidat(candidat, criteres) };
+      const creneaux = candidat.slots
+        .filter(
+          (s) =>
+            s.statut !== "occupe" &&
+            datesSet.has(s.date) &&
+            s.heure_debut <= heureDebut &&
+            s.heure_fin >= heureFin,
+        )
+        .sort((a, b) => a.date.localeCompare(b.date) || a.heure_debut.localeCompare(b.heure_debut));
+      return { candidat, creneaux, distance: distanceCandidat(candidat, criteres) };
     })
-    .filter(({ couvertes }) => couvertes > 0)
+    .filter(({ creneaux }) => creneaux.length > 0)
     .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
     .filter(({ candidat }) =>
       criteres.badgesRequis?.length
         ? criteres.badgesRequis.every((b) => candidat.badges.includes(b))
         : true,
     )
-    .map(({ candidat, couvertes, distance }) => ({
+    .map(({ candidat, creneaux, distance }) => ({
       candidat,
       distanceKm: distance,
       score: scoreQualitatif(candidat, criteres),
-      datesCouvertes: couvertes,
+      datesCouvertes: new Set(creneaux.map((s) => s.date)).size,
       totalDates: dates.length,
+      creneaux,
     }))
     .sort((a, b) => b.datesCouvertes - a.datesCouvertes || b.score - a.score);
 }

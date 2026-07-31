@@ -12,10 +12,12 @@ import {
   type CritereRecherche,
 } from "@/lib/matching";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
+import { PhotoProfil } from "@/components/PhotoProfil";
 import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
 import { CriteresForm, type CriteresParent, type BadgeOption } from "./CriteresForm";
+import { DemandeCreneauxForm } from "./DemandeCreneauxForm";
 import { ajouterBesoin, supprimerBesoin } from "./actions";
 
 type SlotJoint = { id: string; date: string; heure_debut: string; heure_fin: string };
@@ -50,6 +52,8 @@ export async function PlanningParent({
     { data: tousCreneaux },
     { data: reseau },
     { data: badgesCatalogue },
+    { data: photos },
+    { data: demandes },
   ] = await Promise.all([
     supabase
       .from("besoins_garde")
@@ -79,11 +83,28 @@ export async function PlanningParent({
     supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
     supabase
       .from("availability_slots")
-      .select("professional_id, date, heure_debut, heure_fin, statut")
+      .select("id, professional_id, date, heure_debut, heure_fin, statut")
       .gte("date", todayISO()),
     supabase.from("parent_networks").select("professional_id, statut").eq("parent_id", userId),
     supabase.from("badges").select("code, label").eq("source", "manuel").order("code"),
+    supabase.from("professional_photos").select("professional_id, fichier_url").order("ordre"),
+    supabase
+      .from("demandes_creneaux")
+      .select("id, professional_id, statut")
+      .eq("parent_id", userId)
+      .in("statut", ["en_attente", "traitee"]),
   ]);
+
+  // Créneaux issus des demandes groupées : proposés (en attente) ou acceptés.
+  // Requête séparée plutôt qu'un filtre sur table jointe, plus lisible côté
+  // PostgREST et plus simple à faire évoluer.
+  const { data: lignesDemandes } = (demandes ?? []).length
+    ? await supabase
+        .from("demande_creneau_lignes")
+        .select("demande_id, statut, slot:availability_slots(id, date, heure_debut, heure_fin)")
+        .in("demande_id", (demandes ?? []).map((d) => d.id))
+        .in("statut", ["propose", "accepte"])
+    : { data: [] };
 
   const slots: CalendarSlot[] = [];
   const footers: Record<string, ReactNode> = {};
@@ -122,6 +143,32 @@ export async function PlanningParent({
     );
   }
 
+  // 1 bis. Créneaux demandés en groupe : acceptés par le professionnel
+  //    (confirmés) ou encore proposés (en attente de sa validation).
+  const demandeParId = new Map((demandes ?? []).map((d) => [d.id, d]));
+  for (const ligne of lignesDemandes ?? []) {
+    const slot = ligne.slot as unknown as SlotJoint | null;
+    if (!slot || reservationsParSlot.has(slot.id)) continue;
+    const professionalId = demandeParId.get(ligne.demande_id)?.professional_id;
+    slots.push({
+      id: slot.id,
+      date: slot.date,
+      heure_debut: slot.heure_debut,
+      heure_fin: slot.heure_fin,
+      statut: ligne.statut === "accepte" ? "libre" : "libre_urgence",
+    });
+    if (professionalId) {
+      footers[slot.id] = (
+        <Link
+          href={`/reseau/${professionalId}`}
+          className="text-[10px] underline opacity-70 hover:opacity-100"
+        >
+          Voir le pro
+        </Link>
+      );
+    }
+  }
+
   // 2. Réservations récurrentes projetées sur la semaine affichée (elles
   //    n'ont pas de dates propres : "tous les mardis" devient le mardi de
   //    cette semaine).
@@ -150,8 +197,15 @@ export async function PlanningParent({
   // 3. Besoins déclarés : un besoin couvert par une réservation (datée ou
   //    récurrente) sur la même plage disparaît au profit de celle-ci ; les
   //    autres s'affichent en "Sans professionnel".
+  const creneauxEngages: SlotJoint[] = [
+    ...[...reservationsParSlot.values()].map((r) => r.slot),
+    ...(lignesDemandes ?? [])
+      .map((l) => l.slot as unknown as SlotJoint | null)
+      .filter((s): s is SlotJoint => s !== null),
+  ];
+
   const estCouvert = (besoin: { date: string; heure_debut: string; heure_fin: string }) => {
-    for (const { slot } of reservationsParSlot.values()) {
+    for (const slot of creneauxEngages) {
       if (slot.date === besoin.date && chevauche(slot.heure_debut, slot.heure_fin, besoin.heure_debut, besoin.heure_fin)) {
         return true;
       }
@@ -208,37 +262,47 @@ export async function PlanningParent({
   const reseauStatuts = new Map<string, string>(
     (reseau ?? []).map((r) => [r.professional_id, r.statut]),
   );
-  // Critères stables du parent (badges, distance, trajet) : saisis une fois,
-  // appliqués à toutes les propositions. Un trajet renseigné remplace la
-  // recherche autour du domicile.
-  const trajetDepart =
-    parentProfile?.trajet_depart_latitude != null && parentProfile?.trajet_depart_longitude != null
-      ? {
-          latitude: parentProfile.trajet_depart_latitude,
-          longitude: parentProfile.trajet_depart_longitude,
-        }
-      : undefined;
-  const trajetArrivee =
-    parentProfile?.trajet_arrivee_latitude != null && parentProfile?.trajet_arrivee_longitude != null
-      ? {
-          latitude: parentProfile.trajet_arrivee_latitude,
-          longitude: parentProfile.trajet_arrivee_longitude,
-        }
-      : undefined;
-  const origine =
-    trajetDepart && trajetArrivee
-      ? undefined
-      : parentProfile?.latitude && parentProfile?.longitude
-        ? { latitude: parentProfile.latitude, longitude: parentProfile.longitude }
-        : undefined;
+  // Première photo de chaque pro : la requête est triée par ordre, donc la
+  // première rencontrée pour un professionnel est la bonne.
+  const photoParPro = new Map<string, string>();
+  for (const photo of photos ?? []) {
+    if (!photoParPro.has(photo.professional_id)) {
+      photoParPro.set(photo.professional_id, photo.fichier_url);
+    }
+  }
+  // Critères stables du parent, saisis une fois et appliqués à toutes les
+  // propositions. La zone est soit une ville, soit un trajet — dans les deux
+  // cas le rayon saisi donne la distance d'éloignement acceptée.
+  const rayonKm = parentProfile?.rayon_km ?? undefined;
+  const modeTrajet =
+    parentProfile?.mode_zone === "trajet" &&
+    parentProfile?.trajet_depart_latitude != null &&
+    parentProfile?.trajet_arrivee_latitude != null;
 
-  const criteresParent: CritereRecherche = {
-    origine,
-    trajetDepart,
-    trajetArrivee,
-    rayonKm: parentProfile?.rayon_km ?? undefined,
-    badgesRequis: parentProfile?.badges_souhaites ?? [],
-  };
+  const criteresParent: CritereRecherche = modeTrajet
+    ? {
+        trajetDepart: {
+          latitude: parentProfile!.trajet_depart_latitude,
+          longitude: parentProfile!.trajet_depart_longitude,
+        },
+        trajetArrivee: {
+          latitude: parentProfile!.trajet_arrivee_latitude,
+          longitude: parentProfile!.trajet_arrivee_longitude,
+        },
+        couloirTrajetKm: rayonKm,
+        badgesRequis: parentProfile?.badges_souhaites ?? [],
+      }
+    : {
+        // À défaut de ville renseignée, on retombe sur l'adresse du profil.
+        origine:
+          parentProfile?.ville_latitude != null && parentProfile?.ville_longitude != null
+            ? { latitude: parentProfile.ville_latitude, longitude: parentProfile.ville_longitude }
+            : parentProfile?.latitude != null && parentProfile?.longitude != null
+              ? { latitude: parentProfile.latitude, longitude: parentProfile.longitude }
+              : undefined,
+        rayonKm,
+        badgesRequis: parentProfile?.badges_souhaites ?? [],
+      };
 
   // Les pros du réseau passent devant, sans jamais exclure les autres profils.
   const prioriserReseau = (propositions: PropositionPro[]) => {
@@ -292,15 +356,20 @@ export async function PlanningParent({
     distanceKm: number | null,
     noteMoyenne: number | null,
     couverture?: { datesCouvertes: number; totalDates: number },
+    creneauxProposables?: CreneauCalendrier[],
+    cle?: string,
   ) => {
     const profil = profilsParId.get(professionalId);
     const statutReseau = reseauStatuts.get(professionalId);
+    // La demande de créneaux suppose une relation de confiance établie : hors
+    // réseau, le parent passe d'abord par "Ajouter à mon réseau".
+    const creneauxDemandables =
+      statutReseau === "accepte" && creneauxProposables?.length ? creneauxProposables : null;
     return (
-      <div
-        key={professionalId}
-        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-4 py-2 text-sm"
-      >
+      <div key={cle ?? professionalId} className="rounded-lg border border-gray-100 px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="flex flex-wrap items-center gap-2">
+          <PhotoProfil fichierUrl={photoParPro.get(professionalId)} taille={40} />
           {statutReseau === "accepte" && (
             <span className="rounded-full bg-liams-teal/10 px-2 py-0.5 text-xs font-medium text-liams-teal">
               Votre réseau
@@ -325,12 +394,14 @@ export async function PlanningParent({
             Voir le profil
           </Link>
           {statutReseau === "accepte" ? (
-            <Link
-              href={`/reseau/${professionalId}`}
-              className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
-            >
-              Réserver
-            </Link>
+            !creneauxDemandables && (
+              <Link
+                href={`/reseau/${professionalId}`}
+                className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
+              >
+                Voir son planning
+              </Link>
+            )
           ) : statutReseau === "en_attente" ? (
             <span className="text-xs text-gray-400">Demande de réseau envoyée</span>
           ) : (
@@ -345,6 +416,18 @@ export async function PlanningParent({
             </form>
           )}
         </span>
+        </div>
+        {creneauxDemandables && (
+          <DemandeCreneauxForm
+            professionalId={professionalId}
+            creneaux={creneauxDemandables.map((c) => ({
+              id: c.id,
+              date: c.date,
+              heure_debut: c.heure_debut,
+              heure_fin: c.heure_fin,
+            }))}
+          />
+        )}
       </div>
     );
   };
@@ -431,6 +514,8 @@ export async function PlanningParent({
                         prop.distanceKm,
                         prop.candidat.note_moyenne,
                         { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
+                        prop.creneaux,
+                        `${groupe.cle}-${prop.candidat.user_id}`,
                       ),
                     )}
                   </div>

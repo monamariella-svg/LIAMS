@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { enregistrerCriteres } from "./actions";
 
 export type CriteresParent = {
   badges_souhaites: string[];
   rayon_km: number | null;
+  mode_zone: "ville" | "trajet" | null;
+  ville: string | null;
   trajet_depart: string | null;
   trajet_arrivee: string | null;
 };
@@ -34,6 +36,7 @@ export function CriteresForm({
   ouvertParDefaut?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(enregistrerCriteres, undefined);
+  const [modeZone, setModeZone] = useState<"ville" | "trajet">(criteres?.mode_zone ?? "ville");
 
   return (
     <details
@@ -74,41 +77,75 @@ export function CriteresForm({
           </div>
         </div>
 
+        <div>
+          <p className="text-sm font-medium text-gray-700">Où chercher</p>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="mode_zone"
+                value="ville"
+                checked={modeZone === "ville"}
+                onChange={() => setModeZone("ville")}
+              />
+              Autour d&apos;une ville
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="mode_zone"
+                value="trajet"
+                checked={modeZone === "trajet"}
+                onChange={() => setModeZone("trajet")}
+              />
+              Le long d&apos;un trajet
+            </label>
+          </div>
+
+          {modeZone === "ville" ? (
+            <input
+              name="ville"
+              defaultValue={criteres?.ville ?? ""}
+              placeholder="Ville (ex : Créteil)"
+              className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-80"
+            />
+          ) : (
+            <>
+              <p className="mt-2 text-xs text-gray-500">
+                Par exemple domicile → école : les professionnels proches de ce
+                chemin vous seront proposés.
+              </p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <input
+                  name="trajet_depart"
+                  defaultValue={criteres?.trajet_depart ?? ""}
+                  placeholder="Point de départ"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <input
+                  name="trajet_arrivee"
+                  defaultValue={criteres?.trajet_arrivee ?? ""}
+                  placeholder="Point d'arrivée"
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
         <label className="flex flex-col gap-1 text-sm">
-          Distance maximale (km)
+          {modeZone === "ville"
+            ? "Distance maximale autour de cette ville (km)"
+            : "Distance maximale de part et d'autre du trajet (km)"}
           <input
             type="number"
             name="rayon"
             min="1"
             defaultValue={criteres?.rayon_km ?? ""}
-            placeholder="Sinon, le rayon déclaré par chaque professionnel"
+            placeholder={modeZone === "ville" ? "ex : 15" : "ex : 3"}
             className="rounded-lg border border-gray-300 px-3 py-2 sm:w-64"
           />
         </label>
-
-        <div>
-          <p className="text-sm font-medium text-gray-700">
-            Sur un trajet (facultatif)
-          </p>
-          <p className="text-xs text-gray-500">
-            Par exemple domicile → école : les professionnels proches de ce
-            chemin vous seront proposés.
-          </p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <input
-              name="trajet_depart"
-              defaultValue={criteres?.trajet_depart ?? ""}
-              placeholder="Point de départ"
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <input
-              name="trajet_arrivee"
-              defaultValue={criteres?.trajet_arrivee ?? ""}
-              placeholder="Point d'arrivée"
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
 
         {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
         {state?.success && (

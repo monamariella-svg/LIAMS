@@ -232,38 +232,62 @@ export async function enregistrerCriteres(
 
   const badges = formData.getAll("badges").map((b) => String(b));
   const rayonBrut = String(formData.get("rayon") ?? "").trim();
+  const modeZone = String(formData.get("mode_zone") ?? "ville") === "trajet" ? "trajet" : "ville";
+  const ville = String(formData.get("ville") ?? "").trim();
   const trajetDepart = String(formData.get("trajet_depart") ?? "").trim();
   const trajetArrivee = String(formData.get("trajet_arrivee") ?? "").trim();
 
-  // Le trajet n'a de sens qu'avec ses deux extrémités ; on ne géocode que si
-  // l'adresse a changé pour éviter un appel réseau à chaque enregistrement.
+  if (modeZone === "ville" && !ville) {
+    return { error: "Indiquez la ville autour de laquelle chercher." };
+  }
+  if (modeZone === "trajet" && (!trajetDepart || !trajetArrivee)) {
+    return { error: "Indiquez le point de départ et le point d'arrivée du trajet." };
+  }
+
+  // On ne géocode que les adresses qui ont changé, pour éviter un appel
+  // réseau inutile à chaque enregistrement.
   const { data: profilActuel } = await supabase
     .from("parent_profiles")
-    .select("trajet_depart, trajet_depart_latitude, trajet_depart_longitude, trajet_arrivee, trajet_arrivee_latitude, trajet_arrivee_longitude")
+    .select(
+      "ville, ville_latitude, ville_longitude, trajet_depart, trajet_depart_latitude, trajet_depart_longitude, trajet_arrivee, trajet_arrivee_latitude, trajet_arrivee_longitude",
+    )
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const departInchange = profilActuel?.trajet_depart === trajetDepart;
-  const arriveeInchangee = profilActuel?.trajet_arrivee === trajetArrivee;
+  type Coords = { latitude: number; longitude: number } | null;
+  const resoudre = async (
+    adresse: string,
+    ancienneAdresse: string | null | undefined,
+    ancienneLat: number | null | undefined,
+    ancienneLng: number | null | undefined,
+  ): Promise<Coords> => {
+    if (!adresse) return null;
+    if (adresse === ancienneAdresse && ancienneLat != null && ancienneLng != null) {
+      return { latitude: ancienneLat, longitude: ancienneLng };
+    }
+    return geocodeAdresse(adresse);
+  };
 
-  const coordsDepart = !trajetDepart
-    ? null
-    : departInchange && profilActuel?.trajet_depart_latitude !== null
-      ? {
-          latitude: profilActuel!.trajet_depart_latitude,
-          longitude: profilActuel!.trajet_depart_longitude,
-        }
-      : await geocodeAdresse(trajetDepart);
+  const coordsVille = await resoudre(
+    ville,
+    profilActuel?.ville,
+    profilActuel?.ville_latitude,
+    profilActuel?.ville_longitude,
+  );
+  const coordsDepart = await resoudre(
+    trajetDepart,
+    profilActuel?.trajet_depart,
+    profilActuel?.trajet_depart_latitude,
+    profilActuel?.trajet_depart_longitude,
+  );
+  const coordsArrivee = await resoudre(
+    trajetArrivee,
+    profilActuel?.trajet_arrivee,
+    profilActuel?.trajet_arrivee_latitude,
+    profilActuel?.trajet_arrivee_longitude,
+  );
 
-  const coordsArrivee = !trajetArrivee
-    ? null
-    : arriveeInchangee && profilActuel?.trajet_arrivee_latitude !== null
-      ? {
-          latitude: profilActuel!.trajet_arrivee_latitude,
-          longitude: profilActuel!.trajet_arrivee_longitude,
-        }
-      : await geocodeAdresse(trajetArrivee);
-
+  if (ville && !coordsVille) return { error: "Ville introuvable." };
   if (trajetDepart && !coordsDepart) return { error: "Adresse de départ introuvable." };
   if (trajetArrivee && !coordsArrivee) return { error: "Adresse d'arrivée introuvable." };
 
@@ -271,6 +295,10 @@ export async function enregistrerCriteres(
     user_id: user.id,
     badges_souhaites: badges,
     rayon_km: rayonBrut ? Number(rayonBrut) : null,
+    mode_zone: modeZone,
+    ville: ville || null,
+    ville_latitude: coordsVille?.latitude ?? null,
+    ville_longitude: coordsVille?.longitude ?? null,
     trajet_depart: trajetDepart || null,
     trajet_depart_latitude: coordsDepart?.latitude ?? null,
     trajet_depart_longitude: coordsDepart?.longitude ?? null,
@@ -434,6 +462,124 @@ export async function supprimerBesoinRecurrence(formData: FormData) {
     .delete()
     .eq("id", recurrenceId)
     .eq("parent_id", user.id);
+
+  revalidatePath("/planning");
+}
+
+// ------------------------------------------------------------------------
+// Demandes groupées de créneaux : le parent coche plusieurs créneaux d'un
+// même professionnel et envoie le tout ; le professionnel décoche ce qui ne
+// lui convient pas et valide le reste.
+// ------------------------------------------------------------------------
+
+export async function demanderCreneaux(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const slotIds = formData.getAll("slot_ids").map((s) => String(s)).filter(Boolean);
+
+  if (!professionalId) return { error: "Professionnel introuvable." };
+  if (slotIds.length === 0) return { error: "Cochez au moins un créneau." };
+
+  // On ne demande que des créneaux réellement encore libres.
+  const { data: slotsValides } = await supabase
+    .from("availability_slots")
+    .select("id")
+    .in("id", slotIds)
+    .eq("professional_id", professionalId)
+    .neq("statut", "occupe");
+
+  if (!slotsValides?.length) {
+    return { error: "Ces créneaux ne sont plus disponibles." };
+  }
+
+  const { data: demande, error: erreurDemande } = await supabase
+    .from("demandes_creneaux")
+    .insert({ parent_id: user.id, professional_id: professionalId, statut: "en_attente" })
+    .select("id")
+    .single();
+
+  if (erreurDemande) return { error: erreurDemande.message };
+
+  const { error } = await supabase.from("demande_creneau_lignes").insert(
+    slotsValides.map((s) => ({ demande_id: demande.id, slot_id: s.id, statut: "propose" })),
+  );
+
+  if (error) return { error: error.message };
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Nouvelle demande de créneaux",
+    `<p>Un parent vous demande ${slotsValides.length} créneau(x) sur Liams. Connectez-vous à votre planning pour choisir ceux que vous acceptez.</p>`,
+  );
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+export async function traiterDemandeCreneaux(formData: FormData) {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const demandeId = String(formData.get("demande_id") ?? "");
+  const acceptes = new Set(formData.getAll("slot_ids").map((s) => String(s)));
+  if (!demandeId) return;
+
+  const { data: demande } = await supabase
+    .from("demandes_creneaux")
+    .select("id, parent_id")
+    .eq("id", demandeId)
+    .eq("professional_id", user.id)
+    .maybeSingle();
+  if (!demande) return;
+
+  const { data: lignes } = await supabase
+    .from("demande_creneau_lignes")
+    .select("id, slot_id")
+    .eq("demande_id", demandeId);
+
+  let nbAcceptes = 0;
+  for (const ligne of lignes ?? []) {
+    if (!acceptes.has(ligne.slot_id)) {
+      await supabase
+        .from("demande_creneau_lignes")
+        .update({ statut: "refuse" })
+        .eq("id", ligne.id);
+      continue;
+    }
+
+    // Réservation du créneau : le filtre sur "pas déjà occupé" rend la mise à
+    // jour atomique, un créneau pris entre-temps ne renvoie aucune ligne.
+    const { data: slotReserve } = await supabase
+      .from("availability_slots")
+      .update({ statut: "occupe" })
+      .eq("id", ligne.slot_id)
+      .eq("professional_id", user.id)
+      .neq("statut", "occupe")
+      .select("id")
+      .maybeSingle();
+
+    await supabase
+      .from("demande_creneau_lignes")
+      .update({ statut: slotReserve ? "accepte" : "refuse" })
+      .eq("id", ligne.id);
+
+    if (slotReserve) nbAcceptes++;
+  }
+
+  await supabase.from("demandes_creneaux").update({ statut: "traitee" }).eq("id", demandeId);
+
+  await notifierUtilisateur(
+    supabase,
+    demande.parent_id,
+    nbAcceptes > 0 ? "Créneaux de garde confirmés" : "Demande de créneaux refusée",
+    nbAcceptes > 0
+      ? `<p>Le professionnel a confirmé ${nbAcceptes} créneau(x) de votre demande sur Liams. Retrouvez-les dans votre planning.</p>`
+      : "<p>Le professionnel n'a retenu aucun des créneaux demandés sur Liams. Connectez-vous pour en proposer d'autres.</p>",
+  );
 
   revalidatePath("/planning");
 }
