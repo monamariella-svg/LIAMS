@@ -18,6 +18,12 @@ export default async function TableauDeBordPage() {
     .eq("id", user.id)
     .single();
 
+  const { data: identite } = await supabase
+    .from("identites")
+    .select("prenom")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const { data: feedbackEnAttente } = await supabase
     .from("feedback_pilote")
     .select("id")
@@ -28,7 +34,9 @@ export default async function TableauDeBordPage() {
   return (
     <div className="mx-auto flex max-w-2xl flex-1 flex-col justify-center px-6 py-16 text-center">
       <h1 className="text-2xl font-semibold text-liams-navy">
-        Bienvenue{profile?.role ? ` — ${profile.role}` : ""} !
+        {/* Les comptes créés avant que le prénom existe n'en ont pas :
+            un accueil sans prénom vaut mieux qu'un accueil bancal. */}
+        Bienvenue{identite?.prenom ? ` ${identite.prenom}` : ""} !
       </h1>
       <p className="mt-4 text-gray-600">
         Votre compte est créé. Complétez votre profil pour commencer.

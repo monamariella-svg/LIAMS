@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { computeProfessionalProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
+import { IdentiteForm } from "@/components/identite/IdentiteForm";
+import { DonneesContractuellesForm } from "@/components/identite/DonneesContractuellesForm";
 import { ProfessionalProfileForm } from "./ProfessionalProfileForm";
 import { DocumentUploadForm } from "./DocumentUploadForm";
 import { QualificationXtraForm } from "./QualificationXtraForm";
@@ -12,8 +14,15 @@ import type { DocumentType } from "./actions";
 export default async function ProfilProfessionnelPage() {
   const { supabase, user } = await requireUser("professionnel");
 
-  const [{ data: profile }, { data: documents }, { data: qualification }, { data: photos }, { data: prompts }] =
-    await Promise.all([
+  const [
+    { data: profile },
+    { data: documents },
+    { data: qualification },
+    { data: photos },
+    { data: prompts },
+    { data: identite },
+    { data: donneesContractuelles },
+  ] = await Promise.all([
       supabase.from("professional_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
         .from("professional_documents")
@@ -35,6 +44,16 @@ export default async function ProfilProfessionnelPage() {
         .select("*")
         .eq("professional_id", user.id)
         .order("ordre"),
+      supabase
+        .from("identites")
+        .select("prenom, nom")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("donnees_contractuelles")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle(),
     ]);
 
   const documentsParType = (docType: DocumentType) =>
@@ -53,6 +72,11 @@ export default async function ProfilProfessionnelPage() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil professionnel</h1>
+
+      <IdentiteForm
+        prenom={identite?.prenom ?? null}
+        nom={identite?.nom ?? null}
+      />
 
       <div className="rounded-xl border border-gray-200 p-4">
         <div className="flex items-center justify-between text-sm">
@@ -118,6 +142,8 @@ export default async function ProfilProfessionnelPage() {
       <PromptsManager prompts={prompts ?? []} />
 
       <QualificationXtraForm qualification={qualification} />
+
+      <DonneesContractuellesForm donnees={donneesContractuelles} />
 
       <SoumettreDossierForm />
 

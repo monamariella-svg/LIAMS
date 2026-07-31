@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
+import { IdentiteForm } from "@/components/identite/IdentiteForm";
 import { ParentProfileForm } from "./ParentProfileForm";
 import { AjouterEnfantForm } from "./AjouterEnfantForm";
 import { FicheSanteForm } from "./FicheSanteForm";
@@ -10,18 +11,29 @@ import { SupprimerEnfantButton } from "./SupprimerEnfantButton";
 export default async function ProfilParentPage() {
   const { supabase, user } = await requireUser("parent");
 
-  const [{ data: parentProfile }, { data: enfants }] = await Promise.all([
-    supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
-    supabase
-      .from("enfants")
-      .select("*, enfant_fiche_sante(*), enfant_profil_xtra(*)")
-      .eq("parent_id", user.id)
-      .order("created_at"),
-  ]);
+  const [{ data: parentProfile }, { data: enfants }, { data: identite }] =
+    await Promise.all([
+      supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("enfants")
+        .select("*, enfant_fiche_sante(*), enfant_profil_xtra(*)")
+        .eq("parent_id", user.id)
+        .order("created_at"),
+      supabase
+        .from("identites")
+        .select("prenom, nom")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold text-liams-navy">Mon profil parent</h1>
+
+      <IdentiteForm
+        prenom={identite?.prenom ?? null}
+        nom={identite?.nom ?? null}
+      />
 
       <ParentProfileForm adresse={parentProfile?.adresse ?? ""} />
 

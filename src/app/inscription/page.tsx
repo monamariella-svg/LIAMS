@@ -37,6 +37,21 @@ function InscriptionForm() {
           </label>
         </fieldset>
 
+        <div className="flex gap-3">
+          <input
+            name="prenom"
+            required
+            placeholder="Prénom"
+            className="w-full rounded-lg border border-gray-300 px-4 py-2"
+          />
+          <input
+            name="nom"
+            required
+            placeholder="Nom"
+            className="w-full rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </div>
+
         <input
           name="email"
           type="email"

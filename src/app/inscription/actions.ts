@@ -12,10 +12,15 @@ export async function signUp(
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const role = String(formData.get("role") ?? "");
+  const prenom = String(formData.get("prenom") ?? "").trim();
+  const nom = String(formData.get("nom") ?? "").trim();
   const cguAcceptees = formData.get("cgu") === "on";
 
   if (!email || !password) {
     return { error: "Email et mot de passe requis." };
+  }
+  if (!prenom || !nom) {
+    return { error: "Prénom et nom requis." };
   }
   if (role !== "parent" && role !== "professionnel") {
     return { error: "Choisissez un profil (parent ou professionnel)." };
@@ -33,7 +38,7 @@ export async function signUp(
     email,
     password,
     options: {
-      data: { role, cgu_acceptees: true },
+      data: { role, cgu_acceptees: true, prenom, nom },
       emailRedirectTo: `${siteUrl}/connexion`,
     },
   });
