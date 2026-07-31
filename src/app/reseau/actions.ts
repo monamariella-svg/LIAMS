@@ -30,6 +30,8 @@ export async function demanderAjoutReseau(formData: FormData) {
 
   revalidatePath("/reseau");
   revalidatePath(`/messages`);
+  // La demande peut partir des propositions de profils du planning parent.
+  revalidatePath("/planning");
 }
 
 export async function repondreReseau(formData: FormData) {
@@ -48,12 +50,16 @@ export async function repondreReseau(formData: FormData) {
     .eq("parent_id", parentId)
     .eq("professional_id", user!.id);
 
+  const urlRecherche = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://liams-liams-app.vercel.app"}/recherche`;
   await notifierUtilisateur(
     supabase,
     parentId,
     accepter ? "Professionnel ajouté à votre réseau" : "Demande de réseau refusée",
-    `<p>Le professionnel a ${accepter ? "accepté de rejoindre" : "refusé de rejoindre"} votre réseau de confiance sur Liams.</p>`,
+    accepter
+      ? "<p>Le professionnel a accepté de rejoindre votre réseau de confiance sur Liams. Vous pouvez maintenant consulter son planning et réserver.</p>"
+      : `<p>Le professionnel n'a pas pu accepter votre demande de réseau sur Liams.</p><p><a href="${urlRecherche}">Chercher un autre professionnel</a></p>`,
   );
 
   revalidatePath("/reseau");
+  revalidatePath("/planning");
 }

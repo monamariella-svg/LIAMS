@@ -24,16 +24,28 @@ export default async function RecherchePage({
     Object.entries(rawParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]),
   ) as Record<string, string | undefined>;
 
-  const [{ data: parentProfile }, { data: professionnels }, { data: badgesCatalogue }, { data: creneaux }] =
-    await Promise.all([
-      supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
-      supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
-      supabase.from("badges").select("*").order("source"),
-      supabase
-        .from("availability_slots")
-        .select("professional_id, date, heure_debut, heure_fin, statut")
-        .gte("date", todayISO()),
-    ]);
+  const [
+    { data: parentProfile },
+    { data: professionnels },
+    { data: badgesCatalogue },
+    { data: creneaux },
+    { data: reseau },
+  ] = await Promise.all([
+    supabase.from("parent_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+    supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
+    supabase.from("badges").select("*").order("source"),
+    supabase
+      .from("availability_slots")
+      .select("professional_id, date, heure_debut, heure_fin, statut")
+      .gte("date", todayISO()),
+    supabase
+      .from("parent_networks")
+      .select("professional_id")
+      .eq("parent_id", user.id)
+      .eq("statut", "accepte"),
+  ]);
+
+  const reseauIds = new Set((reseau ?? []).map((r) => r.professional_id));
 
   const creneauxParPro = new Map<string, CreneauCalendrier[]>();
   for (const creneau of creneaux ?? []) {
@@ -75,7 +87,7 @@ export default async function RecherchePage({
         ? { latitude: parentProfile.latitude, longitude: parentProfile.longitude }
         : undefined;
 
-  const resultats = matchProfessionnels(candidats, {
+  const matches = matchProfessionnels(candidats, {
     jour,
     heureDebut: params.heure_debut || undefined,
     heureFin: params.heure_fin || undefined,
@@ -85,6 +97,12 @@ export default async function RecherchePage({
     trajetArrivee: trajetArrivee ?? undefined,
     badgesRequis,
   });
+
+  // Priorité aux professionnels du réseau de confiance, sans exclure les autres.
+  const resultats = [
+    ...matches.filter((m) => reseauIds.has(m.candidat.user_id)),
+    ...matches.filter((m) => !reseauIds.has(m.candidat.user_id)),
+  ];
 
   const profilsParId = new Map((professionnels ?? []).map((p) => [p.user_id, p]));
 
@@ -190,6 +208,11 @@ export default async function RecherchePage({
               className="flex items-center gap-4 rounded-xl border border-gray-200 p-4 hover:border-liams-orange"
             >
               <div className="flex-1">
+                {reseauIds.has(candidat.user_id) && (
+                  <span className="mb-1 inline-block rounded-full bg-liams-teal/10 px-2 py-0.5 text-xs font-medium text-liams-teal">
+                    Votre réseau
+                  </span>
+                )}
                 <p className="font-medium text-liams-navy">
                   {profil?.tarif_horaire ? `${profil.tarif_horaire} €/h` : "Tarif non renseigné"}
                   {distanceKm !== null && ` — ${distanceKm.toFixed(1)} km`}

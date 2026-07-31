@@ -104,6 +104,56 @@ function scoreQualitatif(candidat: ProfessionalCandidat, criteres: CritereRecher
   return score;
 }
 
+export type PropositionPro = {
+  candidat: ProfessionalCandidat;
+  distanceKm: number | null;
+  score: number;
+  /** Nombre de dates du besoin où le professionnel a un créneau libre couvrant. */
+  datesCouvertes: number;
+  totalDates: number;
+};
+
+/** Propose des professionnels pour un besoin du parent, défini par des dates
+ * concrètes (une seule pour un besoin ponctuel, toutes les occurrences pour
+ * une récurrence) et une plage horaire. Un candidat est retenu s'il couvre au
+ * moins une date avec un créneau libre et respecte les contraintes géo ; le
+ * tri favorise la couverture la plus complète puis le score qualitatif. */
+export function proposerPourBesoin(
+  candidats: ProfessionalCandidat[],
+  dates: string[],
+  heureDebut: string,
+  heureFin: string,
+  criteres: Pick<CritereRecherche, "origine" | "rayonKm"> = {},
+): PropositionPro[] {
+  const datesSet = new Set(dates);
+
+  return candidats
+    .map((candidat) => {
+      const couvertes = new Set(
+        candidat.slots
+          .filter(
+            (s) =>
+              s.statut !== "occupe" &&
+              datesSet.has(s.date) &&
+              s.heure_debut <= heureDebut &&
+              s.heure_fin >= heureFin,
+          )
+          .map((s) => s.date),
+      ).size;
+      return { candidat, couvertes, distance: distanceCandidat(candidat, criteres) };
+    })
+    .filter(({ couvertes }) => couvertes > 0)
+    .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
+    .map(({ candidat, couvertes, distance }) => ({
+      candidat,
+      distanceKm: distance,
+      score: scoreQualitatif(candidat, {}),
+      datesCouvertes: couvertes,
+      totalDates: dates.length,
+    }))
+    .sort((a, b) => b.datesCouvertes - a.datesCouvertes || b.score - a.score);
+}
+
 export function matchProfessionnels(
   candidats: ProfessionalCandidat[],
   criteres: CritereRecherche,
