@@ -37,6 +37,37 @@ export async function validerQualificationXtra(formData: FormData) {
   revalidatePath(`/admin/professionnels/${professionalId}`);
 }
 
+/** Suite au contrôle des justificatifs : le badge demandé devient visible des
+ * parents, ou la demande est retirée. */
+export async function traiterDemandeBadge(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const badgeCode = String(formData.get("badge_code") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+
+  if (decision === "valider") {
+    await supabase
+      .from("professional_badges")
+      .update({
+        statut: "valide",
+        validee_le: new Date().toISOString(),
+        validee_par: user.id,
+      })
+      .eq("professional_id", professionalId)
+      .eq("badge_code", badgeCode);
+  } else if (decision === "refuser") {
+    await supabase
+      .from("professional_badges")
+      .delete()
+      .eq("professional_id", professionalId)
+      .eq("badge_code", badgeCode);
+  }
+
+  revalidatePath(`/admin/professionnels/${professionalId}`);
+  revalidatePath("/admin");
+}
+
 export async function toggleBadge(formData: FormData) {
   const { supabase, user } = await requireAdmin();
 

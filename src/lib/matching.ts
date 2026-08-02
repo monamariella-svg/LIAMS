@@ -97,9 +97,15 @@ function scoreQualitatif(candidat: ProfessionalCandidat, criteres: CritereRecher
   score += (candidat.note_moyenne ?? 0) * 10;
   score += candidat.badges.length * 5;
   if (criteres.tagsBesoins?.length) {
-    const overlap = candidat.specialisations.filter((s) =>
-      criteres.tagsBesoins!.some((t) => s.toLowerCase().includes(t.toLowerCase())),
-    ).length;
+    // Les compétences se déclarent désormais en badges, seuls normalisés — le
+    // texte libre des anciens profils reste pris en compte, « TSA » et
+    // « autisme » n'y ayant jamais eu de raison de se rencontrer.
+    const declarations = [...candidat.badges, ...candidat.specialisations];
+    const overlap = new Set(
+      declarations.filter((d) =>
+        criteres.tagsBesoins!.some((t) => d.toLowerCase().includes(t.toLowerCase())),
+      ),
+    ).size;
     score += overlap * 20;
   }
   return score;

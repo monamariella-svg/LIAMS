@@ -4,6 +4,7 @@ import { NavigationBas } from "@/components/NavigationBas";
 import { BarreProgression } from "@/components/BarreProgression";
 import { IdentiteForm } from "@/components/identite/IdentiteForm";
 import { DonneesContractuellesForm } from "@/components/identite/DonneesContractuellesForm";
+import { BadgesForm } from "./BadgesForm";
 import { ProfessionalProfileForm } from "./ProfessionalProfileForm";
 import { DocumentUploadForm } from "./DocumentUploadForm";
 import { QualificationXtraForm } from "./QualificationXtraForm";
@@ -24,6 +25,8 @@ export default async function ProfilProfessionnelPage() {
     { data: identite },
     { data: donneesContractuelles },
     { data: coordonnees },
+    { data: badges },
+    { data: badgesAttribues },
   ] = await Promise.all([
       supabase.from("professional_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
@@ -61,7 +64,18 @@ export default async function ProfilProfessionnelPage() {
         .select("telephone")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase.from("badges").select("code, label, description, mode").order("code"),
+      supabase
+        .from("professional_badges")
+        .select("badge_code, statut")
+        .eq("professional_id", user.id),
     ]);
+
+  const badgesSimples = (badges ?? []).filter((b) => b.mode === "auto_declare");
+  const badgesSpecialites = (badges ?? []).filter((b) => b.mode === "sur_validation");
+  const statutParCode = new Map(
+    (badgesAttribues ?? []).map((b) => [b.badge_code, b.statut as string]),
+  );
 
   const documentsParType = (docType: DocumentType) =>
     (documents ?? []).filter((d) => d.type === docType);
@@ -96,8 +110,18 @@ export default async function ProfilProfessionnelPage() {
         adresse={profile?.adresse ?? ""}
         rayonKm={profile?.rayon_km ?? 15}
         accueilADomicile={profile?.accueil_a_domicile ?? false}
-        specialisations={profile?.specialisations ?? []}
       />
+
+      <section className="rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-liams-navy">Mes compétences</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Ces informations aident les parents à vous trouver. Elles s&apos;affichent
+          sur votre fiche dès que vous les cochez.
+        </p>
+        <div className="mt-4">
+          <BadgesForm badges={badgesSimples} statutParCode={statutParCode} />
+        </div>
+      </section>
 
       <section className="rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-liams-navy">Documents justificatifs</h2>
@@ -126,6 +150,30 @@ export default async function ProfilProfessionnelPage() {
               documents={documentsParType("photo_logement")}
             />
           )}
+        </div>
+
+        <div className="mt-8 border-t border-gray-200 pt-6">
+          <h3 className="text-base font-semibold text-liams-navy">
+            Mes qualifications et spécialités — à justifier
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Cochez ce pour quoi vous avez un diplôme, une formation ou une
+            expérience. Ces badges{" "}
+            <strong className="font-medium text-liams-navy">
+              n&apos;apparaîtront aux parents qu&apos;après contrôle
+            </strong>{" "}
+            de notre part, et seulement si une solide expérience est prouvée —
+            attestation de contrat, certificat de formation, attestation
+            d&apos;employeur, diplôme. Déposez ces pièces ci-dessus, dans
+            « Diplôme(s) » ou « Certificat(s) ».
+          </p>
+          <div className="mt-4">
+            <BadgesForm
+              badges={badgesSpecialites}
+              statutParCode={statutParCode}
+              sousValidation
+            />
+          </div>
         </div>
       </section>
 

@@ -1,7 +1,12 @@
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
-import { validerDocument, validerQualificationXtra, toggleBadge } from "../../actions";
+import {
+  validerDocument,
+  validerQualificationXtra,
+  toggleBadge,
+  traiterDemandeBadge,
+} from "../../actions";
 
 const DOCUMENT_LABELS: Record<string, string> = {
   casier: "Bulletin n°3 du casier judiciaire",
@@ -36,12 +41,20 @@ export default async function AdminProfessionnelPage({
     supabase.from("professional_documents").select("*").eq("professional_id", id).order("date_upload"),
     supabase.from("professional_qualification_xtra").select("*").eq("professional_id", id).maybeSingle(),
     supabase.from("badges").select("*").eq("source", "manuel"),
-    supabase.from("professional_badges").select("badge_code").eq("professional_id", id),
+    supabase
+      .from("professional_badges")
+      .select("badge_code, statut, demande_le")
+      .eq("professional_id", id),
   ]);
 
   if (!profile) notFound();
 
-  const badgesAttribuesSet = new Set((badgesAttribues ?? []).map((b) => b.badge_code));
+  const badgesAttribuesSet = new Set(
+    (badgesAttribues ?? []).filter((b) => b.statut === "valide").map((b) => b.badge_code),
+  );
+
+  const libelleParCode = new Map((badges ?? []).map((b) => [b.code, b.label as string]));
+  const demandesEnAttente = (badgesAttribues ?? []).filter((b) => b.statut === "en_attente");
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
@@ -120,6 +133,65 @@ export default async function AdminProfessionnelPage({
           </>
         ) : (
           <p className="mt-2 text-sm text-gray-500">Ce professionnel n&apos;a pas déclaré de qualification Xtras.</p>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-liams-navy">
+          Spécialités demandées
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Ces badges ne sont pas visibles des parents tant qu&apos;ils ne sont pas
+          validés. À contrôler au vu des justificatifs déposés ci-dessus :
+          attestation de contrat, certificat de formation, attestation
+          d&apos;employeur.
+        </p>
+
+        {demandesEnAttente.length === 0 ? (
+          <p className="mt-3 text-sm text-gray-500">Aucune demande en attente.</p>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            {demandesEnAttente.map((demande) => (
+              <div
+                key={demande.badge_code}
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
+              >
+                <span className="text-sm font-medium text-liams-navy">
+                  {libelleParCode.get(demande.badge_code) ?? demande.badge_code}
+                  {demande.demande_le && (
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      demandé le{" "}
+                      {new Date(demande.demande_le).toLocaleDateString("fr-FR")}
+                    </span>
+                  )}
+                </span>
+                <div className="flex gap-2">
+                  <form action={traiterDemandeBadge}>
+                    <input type="hidden" name="professional_id" value={id} />
+                    <input type="hidden" name="badge_code" value={demande.badge_code} />
+                    <input type="hidden" name="decision" value="valider" />
+                    <button
+                      type="submit"
+                      className="rounded-full bg-green-600 px-3 py-1 text-xs text-white"
+                    >
+                      Valider
+                    </button>
+                  </form>
+                  <form action={traiterDemandeBadge}>
+                    <input type="hidden" name="professional_id" value={id} />
+                    <input type="hidden" name="badge_code" value={demande.badge_code} />
+                    <input type="hidden" name="decision" value="refuser" />
+                    <button
+                      type="submit"
+                      className="rounded-full bg-red-600 px-3 py-1 text-xs text-white"
+                    >
+                      Refuser
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 

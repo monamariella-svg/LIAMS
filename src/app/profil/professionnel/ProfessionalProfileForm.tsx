@@ -11,14 +11,12 @@ export function ProfessionalProfileForm({
   adresse,
   rayonKm,
   accueilADomicile,
-  specialisations,
 }: {
   tarifHoraire: number | null;
   tarifHoraireUrgence: number | null;
   adresse: string;
   rayonKm: number;
   accueilADomicile: boolean;
-  specialisations: string[];
 }) {
   const [state, formAction, pending] = useActionState(updateProfessionalProfile, undefined);
 
@@ -72,16 +70,6 @@ export function ProfessionalProfileForm({
           defaultValue={adresse}
           placeholder="Ville ou adresse"
           className="w-full rounded-lg border border-gray-300 px-4 py-2"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1 text-sm">
-        Spécialisations (séparées par des virgules)
-        <input
-          name="specialisations"
-          defaultValue={specialisations.join(", ")}
-          placeholder="ex: petite enfance, aide aux devoirs, LSF"
-          className="rounded-lg border border-gray-300 px-4 py-2"
         />
       </label>
 

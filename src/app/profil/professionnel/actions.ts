@@ -44,13 +44,10 @@ export async function updateProfessionalProfile(
   const adresse = String(formData.get("adresse") ?? "").trim();
   const rayonKm = Number(formData.get("rayon_km") ?? 15) || 15;
   const accueilADomicile = formData.get("accueil_a_domicile") === "on";
-  const specialisationsRaw = String(formData.get("specialisations") ?? "");
-  const specialisations = specialisationsRaw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
   const coords = await geocodeAdresse(adresse);
 
+  // Les compétences ne se saisissent plus ici : elles sont devenues des badges
+  // à cocher, seuls exploitables par la mise en relation.
   const { error } = await supabase.from("professional_profiles").upsert({
     user_id: user.id,
     tarif_horaire: tarifHoraire,
@@ -58,7 +55,6 @@ export async function updateProfessionalProfile(
     adresse,
     rayon_km: rayonKm,
     accueil_a_domicile: accueilADomicile,
-    specialisations,
     ...(coords && { latitude: coords.latitude, longitude: coords.longitude }),
   });
 
@@ -66,6 +62,46 @@ export async function updateProfessionalProfile(
 
   revalidatePath("/profil/professionnel");
   return { success: true };
+}
+
+/** Le professionnel coche ou décoche une compétence.
+ *
+ * Le statut n'est pas laissé au formulaire : il découle du mode du badge, lu
+ * en base. Une compétence sans enjeu s'affiche aussitôt, une spécialité part
+ * en demande. La règle de sécurité vérifie de toute façon la même chose — ceci
+ * n'est que la première barrière. */
+export async function basculerBadge(formData: FormData) {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const badgeCode = String(formData.get("badge_code") ?? "");
+  const coche = formData.get("coche") === "true";
+
+  const { data: badge } = await supabase
+    .from("badges")
+    .select("mode")
+    .eq("code", badgeCode)
+    .maybeSingle();
+
+  if (!badge || (badge.mode !== "auto_declare" && badge.mode !== "sur_validation")) {
+    return;
+  }
+
+  if (coche) {
+    await supabase.from("professional_badges").insert({
+      professional_id: user.id,
+      badge_code: badgeCode,
+      statut: badge.mode === "auto_declare" ? "valide" : "en_attente",
+      demande_le: new Date().toISOString(),
+    });
+  } else {
+    await supabase
+      .from("professional_badges")
+      .delete()
+      .eq("professional_id", user.id)
+      .eq("badge_code", badgeCode);
+  }
+
+  revalidatePath("/profil/professionnel");
 }
 
 export async function soumettreDossier(

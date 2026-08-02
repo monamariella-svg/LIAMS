@@ -15,6 +15,7 @@ export default async function AdminDashboardPage() {
     { data: qualifications },
     { data: photos },
     { data: feedbacks },
+    { data: demandesBadges },
   ] = await Promise.all([
     supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "parent"),
     supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "professionnel"),
@@ -25,6 +26,11 @@ export default async function AdminDashboardPage() {
     supabase.from("professional_qualification_xtra").select("professional_id"),
     supabase.from("professional_photos").select("professional_id"),
     supabase.from("feedback_pilote").select("*").not("date_reponse", "is", null),
+    supabase
+      .from("professional_badges")
+      .select("professional_id, badge_code, demande_le, badges(label)")
+      .eq("statut", "en_attente")
+      .order("demande_le"),
   ]);
 
   const docsParPro = new Map<string, string[]>();
@@ -72,6 +78,43 @@ export default async function AdminDashboardPage() {
         <StatCard label="Complétion moyenne des profils pro" value={`${tauxCompletionMoyen}%`} />
         <StatCard label="Score NPS moyen" value={scoreNpsMoyen ?? "—"} sousTitre={`${scoresNps.length} réponse(s)`} />
       </div>
+
+      {/* Une demande non traitée est un badge qui n'apparaît pas : le
+          professionnel attend, et le parent ne voit pas l'information. */}
+      <section className="rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-liams-navy">
+            Spécialités à contrôler
+          </h2>
+          {(demandesBadges ?? []).length > 0 && (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+              {demandesBadges!.length} en attente
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-col gap-2">
+          {(demandesBadges ?? []).length === 0 && (
+            <p className="text-sm text-gray-500">Aucune demande en attente.</p>
+          )}
+          {(demandesBadges ?? []).map((d) => (
+            <Link
+              key={`${d.professional_id}-${d.badge_code}`}
+              href={`/admin/professionnels/${d.professional_id}`}
+              className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-2 text-sm hover:border-liams-orange"
+            >
+              <span className="font-medium text-liams-navy">
+                {(d.badges as unknown as { label: string } | null)?.label ?? d.badge_code}
+              </span>
+              <span className="text-xs text-gray-500">
+                {d.demande_le
+                  ? new Date(d.demande_le).toLocaleDateString("fr-FR")
+                  : "—"}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <section className="rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-liams-navy">Réponses NPS brutes</h2>
