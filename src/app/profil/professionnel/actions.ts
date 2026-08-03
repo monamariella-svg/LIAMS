@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { geocodeAdresse } from "@/lib/geocoding";
+import { sendEmail } from "@/lib/email";
 
 export type ProfilFormState =
   | { error?: string; success?: boolean; dossierComplet?: boolean }
@@ -78,7 +79,7 @@ export async function basculerBadge(formData: FormData) {
 
   const { data: badge } = await supabase
     .from("badges")
-    .select("mode")
+    .select("mode, label")
     .eq("code", badgeCode)
     .maybeSingle();
 
@@ -87,12 +88,30 @@ export async function basculerBadge(formData: FormData) {
   }
 
   if (coche) {
-    await supabase.from("professional_badges").insert({
+    const { error } = await supabase.from("professional_badges").insert({
       professional_id: user.id,
       badge_code: badgeCode,
       statut: badge.mode === "auto_declare" ? "valide" : "en_attente",
       demande_le: new Date().toISOString(),
     });
+
+    // Accompagner un enfant en situation de handicap est la raison d'être de
+    // Liams : une demande de spécialité qui dort est un professionnel qu'un
+    // parent ne trouvera pas. On prévient, sans jamais faire échouer la
+    // demande si le mail ne part pas.
+    if (!error && badge.mode === "sur_validation") {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+      await sendEmail({
+        to: process.env.CONTACT_EMAIL ?? "contact@liams.app",
+        subject: `Spécialité à contrôler : ${badge.label}`,
+        html: `
+          <p>Un professionnel déclare la spécialité <strong>${badge.label}</strong>.</p>
+          <p>Ce badge reste invisible des parents tant qu'il n'est pas validé.
+          À contrôler au vu des justificatifs déposés sur son profil.</p>
+          <p><a href="${siteUrl}/admin/professionnels/${user.id}">Ouvrir le dossier</a></p>
+        `,
+      });
+    }
   } else {
     await supabase
       .from("professional_badges")

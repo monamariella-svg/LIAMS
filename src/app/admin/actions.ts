@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
+import { notifierUtilisateur } from "@/lib/notify";
 
 export async function validerDocument(formData: FormData) {
   const { supabase } = await requireAdmin();
@@ -46,6 +47,13 @@ export async function traiterDemandeBadge(formData: FormData) {
   const badgeCode = String(formData.get("badge_code") ?? "");
   const decision = String(formData.get("decision") ?? "");
 
+  const { data: badge } = await supabase
+    .from("badges")
+    .select("label")
+    .eq("code", badgeCode)
+    .maybeSingle();
+  const libelle = badge?.label ?? badgeCode;
+
   if (decision === "valider") {
     await supabase
       .from("professional_badges")
@@ -56,12 +64,34 @@ export async function traiterDemandeBadge(formData: FormData) {
       })
       .eq("professional_id", professionalId)
       .eq("badge_code", badgeCode);
+
+    // Sans retour, le professionnel a coché une case et n'a plus jamais eu de
+    // nouvelle — alors que son badge est désormais visible des parents.
+    await notifierUtilisateur(
+      supabase,
+      professionalId,
+      `Votre spécialité « ${libelle} » est validée`,
+      `<p>Après contrôle de vos justificatifs, le badge
+       <strong>${libelle}</strong> est désormais affiché sur votre fiche.
+       Les parents qui recherchent cet accompagnement pourront vous trouver.</p>`,
+    );
   } else if (decision === "refuser") {
     await supabase
       .from("professional_badges")
       .delete()
       .eq("professional_id", professionalId)
       .eq("badge_code", badgeCode);
+
+    await notifierUtilisateur(
+      supabase,
+      professionalId,
+      `Votre spécialité « ${libelle} » n'a pas pu être validée`,
+      `<p>Les justificatifs déposés ne nous ont pas permis de valider le badge
+       <strong>${libelle}</strong>.</p>
+       <p>Vous pouvez déposer une nouvelle pièce — attestation de contrat,
+       certificat de formation, attestation d'employeur — puis redemander ce
+       badge depuis votre profil.</p>`,
+    );
   }
 
   revalidatePath(`/admin/professionnels/${professionalId}`);
