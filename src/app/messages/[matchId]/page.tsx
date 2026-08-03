@@ -34,7 +34,9 @@ export default async function ConversationPage({
     reseauStatut = reseau?.statut ?? null;
   }
 
-  const [{ data: messages }, { data: monAvis }] = await Promise.all([
+  const contactId = isParent ? match.professional_id : match.parent_id;
+
+  const [{ data: messages }, { data: monAvis }, { data: identite }] = await Promise.all([
     supabase.from("messages").select("*").eq("match_id", matchId).order("date"),
     supabase
       .from("avis")
@@ -42,12 +44,35 @@ export default async function ConversationPage({
       .eq("match_id", matchId)
       .eq("auteur_id", user.id)
       .maybeSingle(),
+    supabase
+      .from("identites")
+      .select("prenom, nom")
+      .eq("user_id", contactId)
+      .maybeSingle(),
   ]);
+
+  // Savoir à qui l'on écrit : le titre nomme l'interlocuteur plutôt que la page.
+  const nomContact =
+    [identite?.prenom, identite?.nom].filter(Boolean).join(" ") || "Conversation";
+
+  // Le professionnel a ici une mise en relation acceptée : les prénoms des
+  // enfants lui sont accessibles, et c'est bien d'eux qu'il va être question.
+  const { data: prenomsEnfants } = isParent
+    ? { data: null }
+    : await supabase.rpc("prenoms_enfants", { p_parent_id: match.parent_id });
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-liams-navy">Conversation</h1>
+        <div>
+          <h1 className="text-lg font-semibold text-liams-navy">{nomContact}</h1>
+          {(prenomsEnfants as string[] | null)?.length ? (
+            <p className="text-xs text-gray-600">
+              {(prenomsEnfants as string[]).length > 1 ? "Enfants" : "Enfant"} :{" "}
+              {(prenomsEnfants as string[]).join(", ")}
+            </p>
+          ) : null}
+        </div>
         {isParent && !reseauStatut && (
           <form action={demanderAjoutReseau}>
             <input type="hidden" name="professional_id" value={match.professional_id} />

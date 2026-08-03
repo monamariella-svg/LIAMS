@@ -31,6 +31,30 @@ export default async function ReseauPage() {
     .eq(isParent ? "parent_id" : "professional_id", user.id)
     .order("date", { ascending: false });
 
+  // Un carnet d'adresses sans nom ne sert à rien : au-delà d'un contact, on ne
+  // sait plus qui est qui.
+  const contactIds = (reseaux ?? []).map((r) =>
+    isParent ? r.professional_id : r.parent_id,
+  );
+
+  const { data: identites } = contactIds.length
+    ? await supabase.from("identites").select("user_id, prenom, nom").in("user_id", contactIds)
+    : { data: [] };
+  const identiteParId = new Map((identites ?? []).map((i) => [i.user_id, i]));
+
+  // Côté professionnel, le prénom de l'enfant est ce qui distingue vraiment
+  // deux familles. La fonction ne rend que les prénoms — les besoins
+  // particuliers restent réservés à la mise en relation acceptée.
+  const enfantsParParent = new Map<string, string[]>();
+  if (!isParent) {
+    await Promise.all(
+      contactIds.map(async (parentId) => {
+        const { data } = await supabase.rpc("prenoms_enfants", { p_parent_id: parentId });
+        if (data?.length) enfantsParParent.set(parentId, data as string[]);
+      }),
+    );
+  }
+
   const professionalIds = isParent ? (reseaux ?? []).map((r) => r.professional_id) : [];
   const { data: professionalProfiles } = isParent && professionalIds.length
     ? await supabase.from("professional_profiles").select("*").in("user_id", professionalIds)
@@ -67,14 +91,26 @@ export default async function ReseauPage() {
       <div className="flex flex-col gap-3">
         {(reseaux ?? []).map((reseau) => {
           const professionnel = professionnelsParId.get(reseau.professional_id);
+          const contactId = isParent ? reseau.professional_id : reseau.parent_id;
+          const identite = identiteParId.get(contactId);
+          // Un compte créé avant que l'identité existe n'a pas encore de nom :
+          // on retombe sur le rôle plutôt que d'afficher une ligne vide.
+          const nomAffiche =
+            [identite?.prenom, identite?.nom].filter(Boolean).join(" ") ||
+            (isParent ? "Professionnel" : "Parent");
+          const enfants = enfantsParParent.get(contactId) ?? [];
           return (
             <div key={`${reseau.parent_id}-${reseau.professional_id}`} className="flex items-center justify-between rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-3">
                 {isParent && <PhotoProfil fichierUrl={photoParPro.get(reseau.professional_id)} />}
                 <div>
-                  <p className="font-medium text-liams-navy">
-                    {isParent ? "Professionnel" : "Parent"}
-                  </p>
+                  <p className="font-medium text-liams-navy">{nomAffiche}</p>
+                  {enfants.length > 0 && (
+                    <p className="text-xs text-gray-600">
+                      {enfants.length > 1 ? "Enfants" : "Enfant"} :{" "}
+                      {enfants.join(", ")}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">{STATUT_LABELS[reseau.statut] ?? reseau.statut}</p>
                 </div>
               </div>
