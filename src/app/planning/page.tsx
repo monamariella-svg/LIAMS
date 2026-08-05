@@ -5,6 +5,7 @@ import { startOfWeek, todayISO } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
+import { SupprimerCreneauButton } from "./SupprimerCreneauButton";
 import { PlanningParent } from "./PlanningParent";
 import { DemandesRecues, type DemandeRecue } from "./DemandesRecues";
 import {
@@ -19,10 +20,10 @@ import {
 export default async function PlanningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; annule?: string }>;
 }) {
   const { supabase, user, role } = await requireUserParmi(["professionnel", "parent"]);
-  const { week } = await searchParams;
+  const { week, annule } = await searchParams;
   const weekStart = startOfWeek(week || todayISO());
 
   if (role === "parent") {
@@ -208,6 +209,20 @@ export default async function PlanningPage({
         </section>
       )}
 
+      {/* Annuler sans retour laisse douter que quelque chose se soit passé —
+          d'autant que le créneau disparaît, ce qui ressemble à un écran qui
+          n'aurait pas répondu. */}
+      {annule === "avec_reservations" && (
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Créneau annulé. Les familles concernées ont été prévenues par email.
+        </p>
+      )}
+      {annule === "1" && (
+        <p className="rounded-lg bg-gray-100 px-4 py-3 text-sm text-gray-700">
+          Créneau retiré de votre calendrier.
+        </p>
+      )}
+
       <section>
         <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mon calendrier</h2>
         <p className="mb-3 text-xs text-gray-500">
@@ -252,19 +267,10 @@ export default async function PlanningPage({
                         : `${restantes}/${capacite} place${restantes > 1 ? "s" : ""} libre${restantes > 1 ? "s" : ""}`}
                     </span>
                   )}
-                  {/* Un créneau déjà réservé ne se retire pas : la famille
-                      compte dessus. */}
-                  {restantes === capacite && (
-                    <form action={supprimerCreneau}>
-                      <input type="hidden" name="slot_id" value={slot.id} />
-                      <button
-                        type="submit"
-                        className="text-[10px] underline opacity-70 hover:opacity-100"
-                      >
-                        Retirer
-                      </button>
-                    </form>
-                  )}
+                  <SupprimerCreneauButton
+                    slotId={slot.id}
+                    placesReservees={capacite - restantes}
+                  />
                 </div>,
               ];
             }),

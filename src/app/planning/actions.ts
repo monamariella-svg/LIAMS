@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
-import { notifierUtilisateur } from "@/lib/notify";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 import { geocodeAdresse } from "@/lib/geocoding";
 import { computeRecurringDates, parseISODate } from "@/lib/calendar";
 
@@ -293,16 +293,96 @@ export async function supprimerRecurrence(formData: FormData) {
   revalidatePath("/planning");
 }
 
+/** Retrait d'un créneau, réservations comprises.
+ *
+ * Un créneau réservé pouvait auparavant être retiré sans que personne ne le
+ * sache : les familles concernées découvraient l'absence le jour venu. Les
+ * réservations sont donc annulées explicitement et chaque parent prévenu.
+ *
+ * La confirmation est demandée côté navigateur — c'est là que le professionnel
+ * voit ce qu'il s'apprête à défaire. */
 export async function supprimerCreneau(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
   const slotId = String(formData.get("slot_id") ?? "");
+  if (!slotId) return;
+
+  const { data: creneau } = await supabase
+    .from("availability_slots")
+    .select("id, date, heure_debut, heure_fin")
+    .eq("id", slotId)
+    .eq("professional_id", user.id)
+    .maybeSingle();
+  if (!creneau) return;
+
+  const quand = `${new Date(creneau.date).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })} de ${creneau.heure_debut.slice(0, 5)} à ${creneau.heure_fin.slice(0, 5)}`;
+
+  // Les parents à prévenir : ceux dont la réservation vivait sur ce créneau.
+  const parents = new Set<string>();
+
+  const { data: urgences } = await supabase
+    .from("urgent_bookings")
+    .select("id, parent_id")
+    .eq("slot_id", slotId)
+    .in("statut", ["en_attente", "confirme"]);
+
+  for (const u of urgences ?? []) parents.add(u.parent_id);
+
+  if ((urgences ?? []).length > 0) {
+    await supabase
+      .from("urgent_bookings")
+      .update({ statut: "annule" })
+      .in("id", (urgences ?? []).map((u) => u.id));
+  }
+
+  const { data: lignes } = await supabase
+    .from("demande_creneau_lignes")
+    .select("id, demandes_creneaux(parent_id)")
+    .eq("slot_id", slotId)
+    .in("statut", ["propose", "accepte"]);
+
+  for (const l of lignes ?? []) {
+    const parentId = (l.demandes_creneaux as unknown as { parent_id: string } | null)
+      ?.parent_id;
+    if (parentId) parents.add(parentId);
+  }
+
+  if ((lignes ?? []).length > 0) {
+    await supabase
+      .from("demande_creneau_lignes")
+      .update({ statut: "refuse" })
+      .in("id", (lignes ?? []).map((l) => l.id));
+  }
+
   await supabase
     .from("availability_slots")
     .delete()
     .eq("id", slotId)
-    .eq("professional_id", user.id)
-    .neq("statut", "occupe");
+    .eq("professional_id", user.id);
+
+  // Le motif est facultatif : on ne fabrique pas de phrase quand il est vide.
+  const motif = String(formData.get("motif") ?? "").trim();
+  const phraseMotif = motif
+    ? `<p>Motif indiqué : <em>${motif.replace(/[<>]/g, "")}</em></p>`
+    : "";
+
+  for (const parentId of parents) {
+    await notifierUtilisateur(
+      supabase,
+      parentId,
+      "Une garde a été annulée",
+      `<p>Le professionnel a annulé le créneau du <strong>${quand}</strong>.</p>
+       ${phraseMotif}
+       <p>Vous pouvez chercher une autre solution pour cette date.</p>
+       ${lienVers("/planning", "Voir mes besoins de garde")}`,
+    );
+  }
+
   revalidatePath("/planning");
+  redirect(parents.size > 0 ? "/planning?annule=avec_reservations" : "/planning?annule=1");
 }
 
 // ------------------------------------------------------------------------
