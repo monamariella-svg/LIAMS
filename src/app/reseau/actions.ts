@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { notifierUtilisateur } from "@/lib/notify";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 
 export async function demanderAjoutReseau(formData: FormData) {
   const supabase = await createClient();
@@ -25,7 +25,8 @@ export async function demanderAjoutReseau(formData: FormData) {
     supabase,
     professionalId,
     "Nouvelle demande d'ajout à un réseau",
-    "<p>Un parent souhaite vous ajouter à son réseau de confiance sur Liams.</p>",
+    `<p>Un parent souhaite vous ajouter à son réseau de confiance sur Liams.</p>
+     ${lienVers("/reseau", "Répondre à la demande")}`,
   );
 
   revalidatePath("/reseau");
@@ -50,14 +51,16 @@ export async function repondreReseau(formData: FormData) {
     .eq("parent_id", parentId)
     .eq("professional_id", user!.id);
 
-  const urlRecherche = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://liams-liams-app.vercel.app"}/planning`;
   await notifierUtilisateur(
     supabase,
     parentId,
     accepter ? "Professionnel ajouté à votre réseau" : "Demande de réseau refusée",
     accepter
-      ? "<p>Le professionnel a accepté de rejoindre votre réseau de confiance sur Liams. Vous pouvez maintenant consulter son planning et réserver.</p>"
-      : `<p>Le professionnel n'a pas pu accepter votre demande de réseau sur Liams.</p><p><a href="${urlRecherche}">Voir les autres professionnels disponibles pour vos besoins</a></p>`,
+      ? `<p>Le professionnel a accepté de rejoindre votre réseau de confiance sur Liams.
+          Vous pouvez maintenant consulter son planning et réserver.</p>
+         ${lienVers(`/reseau/${user!.id}`, "Voir son planning")}`
+      : `<p>Le professionnel n'a pas pu accepter votre demande de réseau sur Liams.</p>
+         ${lienVers("/planning", "Voir les autres professionnels disponibles")}`,
   );
 
   revalidatePath("/reseau");

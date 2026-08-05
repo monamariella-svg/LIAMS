@@ -14,6 +14,7 @@ export default async function DiagnosticEmailPage() {
   const cle = process.env.RESEND_API_KEY;
   const emailFrom = process.env.EMAIL_FROM;
   const contactEmail = process.env.CONTACT_EMAIL;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
@@ -56,6 +57,16 @@ export default async function DiagnosticEmailPage() {
               "ABSENTE — le code utilise « contact@liams.app », boîte qui n'existe probablement pas"
             }
             probleme={!contactEmail}
+          />
+          {/* Les emails contiennent des liens vers l'application : sans cette
+              adresse, ils pointent dans le vide. */}
+          <Ligne
+            terme="NEXT_PUBLIC_SITE_URL"
+            valeur={
+              siteUrl ??
+              "ABSENTE — les liens dans les emails de notification seront inutilisables"
+            }
+            probleme={!siteUrl}
           />
         </dl>
       </section>

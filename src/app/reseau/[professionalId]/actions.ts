@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { notifierUtilisateur } from "@/lib/notify";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 import { disponibiliteCreneau } from "@/lib/urgence";
 
 export type ReseauFormState = { error?: string; success?: boolean } | undefined;
@@ -25,7 +25,8 @@ export async function demanderReservationUrgente(formData: FormData) {
     supabase,
     professionalId,
     "Nouvelle demande de garde d'urgence",
-    "<p>Un parent de votre réseau demande une garde d'urgence sur l'un de vos créneaux Liams. Connectez-vous pour confirmer ou refuser.</p>",
+    `<p>Un parent de votre réseau demande une garde d'urgence sur l'un de vos créneaux.</p>
+     ${lienVers("/planning", "Confirmer ou refuser")}`,
   );
 
   revalidatePath(`/reseau/${professionalId}`);
@@ -86,7 +87,8 @@ export async function demanderCreneaux(
     supabase,
     professionalId,
     "Nouvelle demande de créneaux",
-    `<p>Un parent vous demande ${slotsValides.length} créneau(x) sur Liams. Connectez-vous à votre planning pour choisir ceux que vous acceptez.</p>`,
+    `<p>Un parent vous demande ${slotsValides.length} créneau(x) sur Liams.</p>
+     ${lienVers("/planning", "Choisir les créneaux que j'accepte")}`,
   );
 
   revalidatePath(`/reseau/${professionalId}`);
@@ -124,7 +126,8 @@ export async function demanderReservationRecurrente(
     supabase,
     professionalId,
     "Nouvelle demande de réservation récurrente",
-    "<p>Un parent de votre réseau demande une réservation récurrente sur Liams. Connectez-vous pour la valider ou la refuser.</p>",
+    `<p>Un parent de votre réseau demande une réservation récurrente.</p>
+     ${lienVers("/planning", "Valider ou refuser")}`,
   );
 
   revalidatePath(`/reseau/${professionalId}`);
@@ -158,7 +161,9 @@ export async function annulerReservationRecurrente(formData: FormData) {
       supabase,
       reservation.professional_id,
       "Réservation récurrente annulée",
-      "<p>Un parent a annulé sa réservation récurrente sur Liams. Le créneau hebdomadaire correspondant est de nouveau disponible.</p>",
+      `<p>Un parent a annulé sa réservation récurrente. Le créneau hebdomadaire
+        correspondant est de nouveau disponible.</p>
+       ${lienVers("/planning", "Voir mon planning")}`,
     );
   }
 
@@ -202,7 +207,8 @@ export async function modifierReservationRecurrente(
     supabase,
     professionalId,
     "Demande de réservation récurrente modifiée",
-    "<p>Un parent a modifié sa demande de réservation récurrente sur Liams. Connectez-vous pour la valider ou la refuser.</p>",
+    `<p>Un parent a modifié sa demande de réservation récurrente.</p>
+     ${lienVers("/planning", "Valider ou refuser")}`,
   );
 
   revalidatePath(`/reseau/${professionalId}`);

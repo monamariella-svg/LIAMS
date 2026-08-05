@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { notifierUtilisateur } from "@/lib/notify";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 
 export type MessagesFormState = { error?: string; success?: boolean } | undefined;
 
@@ -27,7 +27,8 @@ export async function demanderMiseEnRelation(formData: FormData) {
     supabase,
     professionalId,
     "Nouvelle demande de mise en relation",
-    "<p>Un parent souhaite entrer en contact avec vous sur Liams. Connectez-vous pour répondre.</p>",
+    `<p>Un parent souhaite entrer en contact avec vous sur Liams.</p>
+     ${lienVers("/messages", "Voir la demande")}`,
   );
 
   revalidatePath(`/professionnels/${professionalId}`);
@@ -57,7 +58,12 @@ export async function repondreMiseEnRelation(formData: FormData) {
       supabase,
       match.parent_id,
       accepter ? "Votre demande a été acceptée" : "Votre demande a été refusée",
-      `<p>Le professionnel a ${accepter ? "accepté" : "refusé"} votre demande de mise en relation sur Liams.</p>`,
+      `<p>Le professionnel a ${accepter ? "accepté" : "refusé"} votre demande de mise en relation sur Liams.</p>
+       ${
+         accepter
+           ? lienVers(`/messages/${matchId}`, "Ouvrir la conversation")
+           : lienVers("/planning", "Voir d'autres professionnels")
+       }`,
     );
   }
 
@@ -93,11 +99,25 @@ export async function envoyerMessage(
     .maybeSingle();
   if (match) {
     const destinataireId = match.parent_id === user!.id ? match.professional_id : match.parent_id;
+
+    const { data: expediteur } = await supabase
+      .from("identites")
+      .select("prenom, nom")
+      .eq("user_id", user!.id)
+      .maybeSingle();
+    const nomExpediteur =
+      [expediteur?.prenom, expediteur?.nom].filter(Boolean).join(" ") ||
+      "Quelqu'un";
+
+    // Le contenu du message n'est volontairement pas repris : un échange peut
+    // porter sur la santé ou le handicap d'un enfant, et un email traverse des
+    // serveurs que nous ne maîtrisons pas. On annonce, on ne recopie pas.
     await notifierUtilisateur(
       supabase,
       destinataireId,
-      "Nouveau message sur Liams",
-      "<p>Vous avez reçu un nouveau message sur Liams. Connectez-vous pour le lire et y répondre.</p>",
+      `${nomExpediteur} vous a écrit sur Liams`,
+      `<p><strong>${nomExpediteur}</strong> vous a envoyé un message.</p>
+       ${lienVers(`/messages/${matchId}`, "Lire et répondre")}`,
     );
   }
 
@@ -142,7 +162,8 @@ export async function laisserAvis(
     supabase,
     cibleId,
     "Nouvel avis reçu",
-    "<p>Vous avez reçu un nouvel avis sur Liams. Connectez-vous pour le consulter.</p>",
+    `<p>Vous avez reçu un nouvel avis sur Liams.</p>
+     ${lienVers(`/messages/${matchId}`, "Consulter l'avis")}`,
   );
 
   revalidatePath(`/messages/${matchId}`);

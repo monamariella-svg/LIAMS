@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { geocodeAdresse } from "@/lib/geocoding";
 import { sendEmail } from "@/lib/email";
+import { lienVers } from "@/lib/notify";
 
 export type ProfilFormState =
   | { error?: string; success?: boolean; dossierComplet?: boolean }
@@ -100,7 +101,6 @@ export async function basculerBadge(formData: FormData) {
     // parent ne trouvera pas. On prévient, sans jamais faire échouer la
     // demande si le mail ne part pas.
     if (!error && badge.mode === "sur_validation") {
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
       await sendEmail({
         to: process.env.CONTACT_EMAIL ?? "contact@liams.app",
         subject: `Spécialité à contrôler : ${badge.label}`,
@@ -108,7 +108,7 @@ export async function basculerBadge(formData: FormData) {
           <p>Un professionnel déclare la spécialité <strong>${badge.label}</strong>.</p>
           <p>Ce badge reste invisible des parents tant qu'il n'est pas validé.
           À contrôler au vu des justificatifs déposés sur son profil.</p>
-          <p><a href="${siteUrl}/admin/professionnels/${user.id}">Ouvrir le dossier</a></p>
+          ${lienVers(`/admin/professionnels/${user.id}`, "Ouvrir le dossier")}
         `,
       });
     }

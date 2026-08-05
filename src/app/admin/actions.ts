@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
-import { notifierUtilisateur } from "@/lib/notify";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 
 export async function validerDocument(formData: FormData) {
   const { supabase } = await requireAdmin();
@@ -73,7 +73,8 @@ export async function traiterDemandeBadge(formData: FormData) {
       `Votre spécialité « ${libelle} » est validée`,
       `<p>Après contrôle de vos justificatifs, le badge
        <strong>${libelle}</strong> est désormais affiché sur votre fiche.
-       Les parents qui recherchent cet accompagnement pourront vous trouver.</p>`,
+       Les parents qui recherchent cet accompagnement pourront vous trouver.</p>
+       ${lienVers("/profil/professionnel", "Voir mon profil")}`,
     );
   } else if (decision === "refuser") {
     await supabase
@@ -90,7 +91,8 @@ export async function traiterDemandeBadge(formData: FormData) {
        <strong>${libelle}</strong>.</p>
        <p>Vous pouvez déposer une nouvelle pièce — attestation de contrat,
        certificat de formation, attestation d'employeur — puis redemander ce
-       badge depuis votre profil.</p>`,
+       badge depuis votre profil.</p>
+       ${lienVers("/profil/professionnel", "Déposer un justificatif")}`,
     );
   }
 
