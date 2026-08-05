@@ -110,6 +110,10 @@ export default async function ProfilProfessionnelPage() {
         adresse={profile?.adresse ?? ""}
         rayonKm={profile?.rayon_km ?? 15}
         accueilADomicile={profile?.accueil_a_domicile ?? false}
+        typeProfessionnel={profile?.type_professionnel ?? null}
+        cadreExercice={profile?.cadre_exercice ?? null}
+        lieuAccueil={profile?.lieu_accueil ?? "chez_le_pro"}
+        typesAccueil={profile?.types_accueil ?? ["ponctuel"]}
       />
 
       <section className="rounded-xl border border-gray-200 p-6">

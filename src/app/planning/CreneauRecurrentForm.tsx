@@ -18,7 +18,16 @@ export type RecurrenceExistante = {
   statut?: string;
   date_debut: string;
   date_fin: string;
+  capacite?: number;
+  types_accueil?: string[];
+  lieu_accueil?: string | null;
 };
+
+const TYPES_ACCUEIL = [
+  { value: "longue_duree", label: "Longue durée" },
+  { value: "ponctuel", label: "Ponctuel" },
+  { value: "urgence", label: "Urgence" },
+];
 
 /** Deux variantes du même formulaire : les créneaux de disponibilité du
  * professionnel ("creneaux", avec choix du type) et les besoins de garde du
@@ -56,9 +65,13 @@ const ACTIONS: Record<VarianteRecurrence, { creer: typeof ajouterCreneauxRecurre
 export function CreneauRecurrentForm({
   recurrence,
   variante = "creneaux",
+  lieuAccueilProfil,
 }: {
   recurrence?: RecurrenceExistante;
   variante?: VarianteRecurrence;
+  /** Lieu déclaré au profil : le choix par créneau n'a de sens que si le
+   * professionnel a répondu « l'un ou l'autre ». */
+  lieuAccueilProfil?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     recurrence ? ACTIONS[variante].modifier : ACTIONS[variante].creer,
@@ -110,17 +123,55 @@ export function CreneauRecurrentForm({
       </div>
 
       {variante === "creneaux" && (
-        <label className="flex flex-col gap-1 text-sm">
-          Type de créneau
-          <select
-            name="statut"
-            defaultValue={recurrence?.statut ?? "libre"}
-            className="rounded-lg border border-gray-300 px-3 py-2"
-          >
-            <option value="libre">Régulier</option>
-            <option value="libre_urgence">Urgence</option>
-          </select>
-        </label>
+        <div className="flex flex-col gap-3 rounded-lg bg-gray-50 p-4">
+          <fieldset className="flex flex-col gap-2">
+            <legend className="px-1 text-sm font-medium text-liams-navy">
+              Pour quels accueils
+            </legend>
+            {TYPES_ACCUEIL.map((t) => (
+              <label key={t.value} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  name="types_accueil"
+                  value={t.value}
+                  defaultChecked={(
+                    recurrence?.types_accueil ?? ["ponctuel"]
+                  ).includes(t.value)}
+                />
+                {t.label}
+              </label>
+            ))}
+          </fieldset>
+
+          <label className="flex flex-col gap-1 text-sm">
+            Nombre d&apos;enfants accueillis en même temps
+            <input
+              type="number"
+              name="capacite"
+              min="1"
+              max="20"
+              defaultValue={recurrence?.capacite ?? 1}
+              className="w-24 rounded-lg border border-gray-300 px-3 py-2"
+            />
+          </label>
+
+          {/* Le lieu ne se demande que si le professionnel a déclaré faire les
+              deux : sinon la réponse est déjà connue et la question est du
+              bruit. */}
+          {lieuAccueilProfil === "les_deux" && (
+            <label className="flex flex-col gap-1 text-sm">
+              Lieu de ces accueils
+              <select
+                name="lieu_accueil"
+                defaultValue={recurrence?.lieu_accueil ?? "chez_le_pro"}
+                className="rounded-lg border border-gray-300 px-3 py-2"
+              >
+                <option value="chez_le_pro">Chez moi</option>
+                <option value="domicile_parent">Au domicile de la famille</option>
+              </select>
+            </label>
+          )}
+        </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">

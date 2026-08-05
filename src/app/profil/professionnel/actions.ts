@@ -46,6 +46,16 @@ export async function updateProfessionalProfile(
   const adresse = String(formData.get("adresse") ?? "").trim();
   const rayonKm = Number(formData.get("rayon_km") ?? 15) || 15;
   const accueilADomicile = formData.get("accueil_a_domicile") === "on";
+  const typeProfessionnel = String(formData.get("type_professionnel") ?? "") || null;
+  const cadreExercice = String(formData.get("cadre_exercice") ?? "") || null;
+  const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || "chez_le_pro";
+
+  // Un professionnel qui n'accepte aucun type d'accueil n'apparaîtrait dans
+  // aucune recherche : on retombe sur le ponctuel plutôt que de le rendre
+  // invisible sans qu'il comprenne pourquoi.
+  const typesAccueil = formData.getAll("types_accueil").map(String);
+  const typesAccueilRetenus = typesAccueil.length > 0 ? typesAccueil : ["ponctuel"];
+
   const coords = await geocodeAdresse(adresse);
 
   // Les compétences ne se saisissent plus ici : elles sont devenues des badges
@@ -57,6 +67,10 @@ export async function updateProfessionalProfile(
     adresse,
     rayon_km: rayonKm,
     accueil_a_domicile: accueilADomicile,
+    type_professionnel: typeProfessionnel,
+    cadre_exercice: cadreExercice,
+    lieu_accueil: lieuAccueil,
+    types_accueil: typesAccueilRetenus,
     ...(coords && { latitude: coords.latitude, longitude: coords.longitude }),
   });
 

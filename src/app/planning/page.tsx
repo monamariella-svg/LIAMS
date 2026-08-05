@@ -35,6 +35,7 @@ export default async function PlanningPage({
     { data: recurringBookings },
     { data: recurrences },
     { data: demandes },
+    { data: profilPro },
   ] = await Promise.all([
     supabase
       .from("availability_slots")
@@ -63,6 +64,11 @@ export default async function PlanningPage({
       .eq("professional_id", user.id)
       .eq("statut", "en_attente")
       .order("created_at"),
+    supabase
+      .from("professional_profiles")
+      .select("lieu_accueil")
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
@@ -224,7 +230,7 @@ export default async function PlanningPage({
 
       <RecurrencesList recurrences={(recurrences ?? []) as RecurrenceExistante[]} />
 
-      <CreneauRecurrentForm />
+      <CreneauRecurrentForm lieuAccueilProfil={profilPro?.lieu_accueil} />
 
       <NavigationBas />
     </div>

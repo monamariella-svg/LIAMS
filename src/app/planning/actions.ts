@@ -23,12 +23,35 @@ export async function ajouterCreneau(
 
   if (!date || !heureDebut || !heureFin) return { error: "Renseignez la date et les horaires." };
 
+  // Un créneau isolé hérite des réglages du profil : poser trois questions de
+  // plus pour ajouter un mardi découragerait l'usage. Le professionnel les
+  // ajuste ensuite s'il le souhaite.
+  const { data: profil } = await supabase
+    .from("professional_profiles")
+    .select("types_accueil, lieu_accueil")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const capaciteSaisie = Number(formData.get("capacite") ?? 0);
+  const typesSaisis = formData.getAll("types_accueil").map(String);
+  const lieuSaisi = String(formData.get("lieu_accueil") ?? "");
+
   const { error } = await supabase.from("availability_slots").insert({
     professional_id: user.id,
     date,
     heure_debut: heureDebut,
     heure_fin: heureFin,
     statut,
+    capacite: capaciteSaisie >= 1 ? Math.min(20, capaciteSaisie) : 1,
+    types_accueil:
+      typesSaisis.length > 0 ? typesSaisis : (profil?.types_accueil ?? ["ponctuel"]),
+    // « les_deux » au profil veut dire « je choisirai » : sans choix explicite,
+    // on ne devine pas à sa place et on laisse le lieu indéterminé.
+    lieu_accueil:
+      lieuSaisi ||
+      (profil?.lieu_accueil && profil.lieu_accueil !== "les_deux"
+        ? profil.lieu_accueil
+        : null),
   });
 
   if (error) return { error: error.message };
@@ -47,6 +70,9 @@ type ChampsRecurrence = {
   dateFin: string;
   jours: number[];
   dates: string[];
+  capacite: number;
+  typesAccueil: string[];
+  lieuAccueil: string | null;
 };
 
 function lireChampsRecurrence(
@@ -58,6 +84,12 @@ function lireChampsRecurrence(
   const dateDebut = String(formData.get("date_debut") ?? "");
   const dateFin = String(formData.get("date_fin") ?? "");
   const jours = formData.getAll("jours").map((j) => Number(j));
+
+  const capacite = Math.min(20, Math.max(1, Number(formData.get("capacite") ?? 1) || 1));
+  const typesSaisis = formData.getAll("types_accueil").map(String);
+  // Une série sans type d'accueil ne serait proposée à personne.
+  const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
+  const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
 
   if (!heureDebut || !heureFin || !dateDebut || !dateFin || jours.length === 0) {
     return { error: "Choisissez au moins un jour, un horaire et une période." };
@@ -80,7 +112,20 @@ function lireChampsRecurrence(
     return { error: "Aucune date ne correspond à ces critères." };
   }
 
-  return { champs: { heureDebut, heureFin, statut, dateDebut, dateFin, jours, dates } };
+  return {
+    champs: {
+      heureDebut,
+      heureFin,
+      statut,
+      dateDebut,
+      dateFin,
+      jours,
+      dates,
+      capacite,
+      typesAccueil,
+      lieuAccueil,
+    },
+  };
 }
 
 async function genererCreneaux(
@@ -89,6 +134,8 @@ async function genererCreneaux(
   recurrenceId: string,
   champs: ChampsRecurrence,
 ) {
+  // Chaque créneau généré porte les réglages de sa série : capacité, types
+  // d'accueil et lieu s'appliquent à toutes les dates d'un coup.
   const rows = champs.dates.map((date) => ({
     professional_id: professionalId,
     date,
@@ -96,6 +143,9 @@ async function genererCreneaux(
     heure_fin: champs.heureFin,
     statut: champs.statut,
     recurrence_id: recurrenceId,
+    capacite: champs.capacite,
+    types_accueil: champs.typesAccueil,
+    lieu_accueil: champs.lieuAccueil,
   }));
 
   return supabase
@@ -123,6 +173,9 @@ export async function ajouterCreneauxRecurrents(
       statut: champs.statut,
       date_debut: champs.dateDebut,
       date_fin: champs.dateFin,
+      capacite: champs.capacite,
+      types_accueil: champs.typesAccueil,
+      lieu_accueil: champs.lieuAccueil,
     })
     .select("id")
     .single();
@@ -158,6 +211,9 @@ export async function modifierCreneauxRecurrents(
       statut: champs.statut,
       date_debut: champs.dateDebut,
       date_fin: champs.dateFin,
+      capacite: champs.capacite,
+      types_accueil: champs.typesAccueil,
+      lieu_accueil: champs.lieuAccueil,
     })
     .eq("id", recurrenceId)
     .eq("professional_id", user.id)
