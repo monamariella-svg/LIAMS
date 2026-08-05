@@ -33,6 +33,15 @@ export default async function AdminDashboardPage() {
       .order("demande_le"),
   ]);
 
+  // Savoir quel badge est demandé sans savoir par qui ne sert à rien.
+  const { data: identites } = (demandesBadges ?? []).length
+    ? await supabase
+        .from("identites")
+        .select("user_id, prenom, nom")
+        .in("user_id", (demandesBadges ?? []).map((d) => d.professional_id))
+    : { data: [] };
+  const identiteParId = new Map((identites ?? []).map((i) => [i.user_id, i]));
+
   const docsParPro = new Map<string, string[]>();
   (documents ?? []).forEach((d) => {
     docsParPro.set(d.professional_id, [...(docsParPro.get(d.professional_id) ?? []), d.type]);
@@ -103,8 +112,19 @@ export default async function AdminDashboardPage() {
               href={`/admin/professionnels/${d.professional_id}`}
               className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-2 text-sm hover:border-liams-orange"
             >
-              <span className="font-medium text-liams-navy">
-                {(d.badges as unknown as { label: string } | null)?.label ?? d.badge_code}
+              <span className="flex flex-col">
+                <span className="font-medium text-liams-navy">
+                  {(() => {
+                    const i = identiteParId.get(d.professional_id);
+                    return (
+                      [i?.prenom, i?.nom].filter(Boolean).join(" ") ||
+                      "Identité non renseignée"
+                    );
+                  })()}
+                </span>
+                <span className="text-xs text-gray-600">
+                  {(d.badges as unknown as { label: string } | null)?.label ?? d.badge_code}
+                </span>
               </span>
               <span className="text-xs text-gray-500">
                 {d.demande_le

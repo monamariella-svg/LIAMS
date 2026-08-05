@@ -36,6 +36,9 @@ export default async function AdminProfessionnelPage({
     { data: qualification },
     { data: badges },
     { data: badgesAttribues },
+    { data: identite },
+    { data: compte },
+    { data: coordonnees },
   ] = await Promise.all([
     supabase.from("professional_profiles").select("*").eq("user_id", id).maybeSingle(),
     supabase.from("professional_documents").select("*").eq("professional_id", id).order("date_upload"),
@@ -45,6 +48,9 @@ export default async function AdminProfessionnelPage({
       .from("professional_badges")
       .select("badge_code, statut, demande_le")
       .eq("professional_id", id),
+    supabase.from("identites").select("prenom, nom").eq("user_id", id).maybeSingle(),
+    supabase.from("users").select("email").eq("id", id).maybeSingle(),
+    supabase.from("coordonnees").select("telephone").eq("user_id", id).maybeSingle(),
   ]);
 
   if (!profile) notFound();
@@ -58,7 +64,22 @@ export default async function AdminProfessionnelPage({
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
-      <h1 className="text-2xl font-semibold text-liams-navy">Vérification professionnel</h1>
+      {/* Contrôler des justificatifs sans savoir de qui il s'agit n'a pas de
+          sens : l'identité passe en tête de page. */}
+      <div>
+        <p className="text-xs uppercase tracking-wide text-gray-400">
+          Vérification professionnel
+        </p>
+        <h1 className="text-2xl font-semibold text-liams-navy">
+          {[identite?.prenom, identite?.nom].filter(Boolean).join(" ") ||
+            "Identité non renseignée"}
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">
+          {compte?.email}
+          {coordonnees?.telephone ? ` · ${coordonnees.telephone}` : ""}
+        </p>
+      </div>
+
       <p className="text-sm text-gray-500">
         Statut global casier :{" "}
         <span className={`rounded-full px-2 py-0.5 text-xs ${STATUT_LABELS[profile.statut_verification_casier]?.className}`}>
