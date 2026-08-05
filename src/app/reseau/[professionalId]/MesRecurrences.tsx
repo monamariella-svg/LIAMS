@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
+import type { EnfantSelectionnable } from "@/components/SelectionEnfants";
 import { RecurrenceForm, type ReservationRecurrente } from "./RecurrenceForm";
 import { annulerReservationRecurrente } from "./actions";
 
@@ -15,9 +16,11 @@ const STATUT_BADGES: Record<string, { label: string; className: string }> = {
 export function MesRecurrences({
   professionalId,
   reservations,
+  enfants,
 }: {
   professionalId: string;
   reservations: ReservationAvecStatut[];
+  enfants: EnfantSelectionnable[];
 }) {
   const [idEnEdition, setIdEnEdition] = useState<string | null>(null);
 
@@ -65,7 +68,11 @@ export function MesRecurrences({
                 </div>
               </div>
               {idEnEdition === rec.id && (
-                <RecurrenceForm professionalId={professionalId} recurrence={rec} />
+                <RecurrenceForm
+                  professionalId={professionalId}
+                  recurrence={rec}
+                  enfants={enfants}
+                />
               )}
             </div>
           );

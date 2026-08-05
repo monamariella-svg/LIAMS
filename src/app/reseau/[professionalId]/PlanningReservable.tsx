@@ -4,6 +4,10 @@ import { useActionState, useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { formatDateLabel, isoWeekday } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
+import {
+  SelectionEnfants,
+  type EnfantSelectionnable,
+} from "@/components/SelectionEnfants";
 import { demanderCreneaux } from "./actions";
 
 export type CreneauReservable = CalendarSlot & {
@@ -14,6 +18,10 @@ export type CreneauReservable = CalendarSlot & {
   demandable: boolean;
   /** Pourquoi il ne l'est pas, affiché à côté du créneau. */
   raison?: string;
+  /** Places encore libres. Un créneau à zéro n'arrive pas jusqu'ici. */
+  placesRestantes: number;
+  /** Places déclarées par le professionnel, pour situer ce qui reste. */
+  capacite: number;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -31,12 +39,14 @@ export function PlanningReservable({
   slots,
   mesReservationIds,
   reservables,
+  enfants,
 }: {
   professionalId: string;
   weekStart: string;
   slots: CalendarSlot[];
   mesReservationIds: string[];
   reservables: CreneauReservable[];
+  enfants: EnfantSelectionnable[];
 }) {
   const [state, formAction, pending] = useActionState(demanderCreneaux, undefined);
   const demandables = reservables.filter((c) => c.demandable);
@@ -148,9 +158,24 @@ export function PlanningReservable({
                 {creneau.correspondBesoin && (
                   <span className="text-xs text-gray-500">correspond à votre besoin</span>
                 )}
+                {/* Le nombre restant ne se signale que s'il contraint : sur un
+                    créneau qui reste entier, c'est du bruit. */}
+                {creneau.placesRestantes < creneau.capacite && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                    {creneau.placesRestantes === 1
+                      ? "1 place restante"
+                      : `${creneau.placesRestantes} places restantes`}
+                  </span>
+                )}
                 {creneau.raison && <span className="text-xs text-gray-500">{creneau.raison}</span>}
               </label>
             ))}
+          </div>
+        )}
+
+        {demandables.length > 0 && (
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <SelectionEnfants enfants={enfants} />
           </div>
         )}
 

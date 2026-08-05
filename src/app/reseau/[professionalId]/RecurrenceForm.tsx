@@ -2,6 +2,10 @@
 
 import { useActionState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
+import {
+  SelectionEnfants,
+  type EnfantSelectionnable,
+} from "@/components/SelectionEnfants";
 import { demanderReservationRecurrente, modifierReservationRecurrente } from "./actions";
 
 export type ReservationRecurrente = {
@@ -9,6 +13,9 @@ export type ReservationRecurrente = {
   jour_semaine: number;
   heure_debut: string;
   heure_fin: string;
+  date_debut?: string | null;
+  date_fin?: string | null;
+  enfant_ids?: string[];
 };
 
 /** Sans prop `recurrence` : nouvelle demande. Avec : modification d'une
@@ -16,9 +23,11 @@ export type ReservationRecurrente = {
 export function RecurrenceForm({
   professionalId,
   recurrence,
+  enfants,
 }: {
   professionalId: string;
   recurrence?: ReservationRecurrente;
+  enfants: EnfantSelectionnable[];
 }) {
   const [state, formAction, pending] = useActionState(
     recurrence ? modifierReservationRecurrente : demanderReservationRecurrente,
@@ -70,6 +79,34 @@ export function RecurrenceForm({
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
       </div>
+      {/* Un accueil de longue durée court sur une période que le parent fixe :
+          une fin laissée vide vaut durée indéterminée. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          À partir du
+          <input
+            type="date"
+            name="date_debut"
+            defaultValue={recurrence?.date_debut ?? ""}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          Jusqu&apos;au
+          <input
+            type="date"
+            name="date_fin"
+            defaultValue={recurrence?.date_fin ?? ""}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <span className="text-xs text-gray-500">
+            Laissez vide pour une durée indéterminée.
+          </span>
+        </label>
+      </div>
+
+      <SelectionEnfants enfants={enfants} selection={recurrence?.enfant_ids} />
+
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       {state?.success && (
         <p className="text-sm text-liams-teal">

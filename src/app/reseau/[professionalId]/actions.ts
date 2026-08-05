@@ -7,6 +7,31 @@ import { disponibiliteCreneau } from "@/lib/urgence";
 
 export type ReseauFormState = { error?: string; success?: boolean } | undefined;
 
+/** Enfants concernés par une réservation.
+ *
+ * Le formulaire est vérifié plutôt que cru sur parole : rien n'empêche
+ * d'envoyer l'identifiant de l'enfant d'autrui. On ne retient donc que ceux
+ * qui appartiennent bien au parent qui réserve.
+ *
+ * Repli sur l'enfant unique quand la sélection est vide : un parent qui n'en a
+ * qu'un n'a pas à cocher une case dont la réponse est évidente. */
+async function enfantsRetenus(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  parentId: string,
+  formData: FormData,
+): Promise<string[]> {
+  const { data: enfants } = await supabase
+    .from("enfants")
+    .select("id")
+    .eq("parent_id", parentId);
+
+  const siens = new Set((enfants ?? []).map((e) => e.id));
+  const demandes = formData.getAll("enfant_ids").map(String).filter((id) => siens.has(id));
+
+  if (demandes.length > 0) return demandes;
+  return siens.size === 1 ? [...siens] : [];
+}
+
 export async function demanderReservationUrgente(formData: FormData) {
   const { supabase, user } = await requireUser("parent");
 
@@ -19,6 +44,7 @@ export async function demanderReservationUrgente(formData: FormData) {
     professional_id: professionalId,
     slot_id: slotId,
     statut: "en_attente",
+    enfant_ids: await enfantsRetenus(supabase, user.id, formData),
   });
 
   await notifierUtilisateur(
@@ -71,7 +97,12 @@ export async function demanderCreneaux(
 
   const { data: demande, error: erreurDemande } = await supabase
     .from("demandes_creneaux")
-    .insert({ parent_id: user.id, professional_id: professionalId, statut: "en_attente" })
+    .insert({
+      parent_id: user.id,
+      professional_id: professionalId,
+      statut: "en_attente",
+      enfant_ids: await enfantsRetenus(supabase, user.id, formData),
+    })
     .select("id")
     .single();
 
@@ -111,6 +142,9 @@ export async function demanderReservationRecurrente(
     return { error: "Choisissez un jour et des horaires." };
   }
 
+  const dateDebut = String(formData.get("date_debut") ?? "") || null;
+  const dateFin = String(formData.get("date_fin") ?? "") || null;
+
   const { error } = await supabase.from("recurring_bookings").insert({
     parent_id: user.id,
     professional_id: professionalId,
@@ -118,6 +152,9 @@ export async function demanderReservationRecurrente(
     heure_debut: heureDebut,
     heure_fin: heureFin,
     statut: "en_attente",
+    enfant_ids: await enfantsRetenus(supabase, user.id, formData),
+    date_debut: dateDebut,
+    date_fin: dateFin,
   });
 
   if (error) return { error: error.message };

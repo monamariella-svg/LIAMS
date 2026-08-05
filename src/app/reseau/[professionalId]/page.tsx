@@ -35,6 +35,7 @@ export default async function PlanningProfessionnelPage({
     { data: besoins },
     { data: besoinRecurrences },
     { data: demandesEnCours },
+    { data: enfants },
   ] = await Promise.all([
     supabase
       .from("availability_slots")
@@ -66,6 +67,11 @@ export default async function PlanningProfessionnelPage({
       .eq("parent_id", user.id)
       .eq("professional_id", professionalId)
       .eq("statut", "en_attente"),
+    supabase
+      .from("enfants")
+      .select("id, prenom")
+      .eq("parent_id", user.id)
+      .order("created_at"),
   ]);
 
   if (!slots) notFound();
@@ -106,11 +112,28 @@ export default async function PlanningProfessionnelPage({
 
   const aujourdHui = todayISO();
   const maintenant = new Date();
-  const reservables: CreneauReservable[] = slots
-    .filter(
-      (slot) =>
-        slot.statut !== "occupe" && slot.date >= aujourdHui && !slotsDejaDemandes.has(slot.id),
-    )
+
+  const candidats = (slots ?? []).filter(
+    (slot) => slot.date >= aujourdHui && !slotsDejaDemandes.has(slot.id),
+  );
+
+  // Les places restantes se calculent en base pour toute la liste d'un coup :
+  // un créneau plein n'est pas proposé, un créneau partiel affiche ce qui
+  // reste — un parent de deux enfants peut vouloir en placer un ici.
+  const { data: restantes } = candidats.length
+    ? await supabase.rpc("places_restantes_creneaux", {
+        p_slot_ids: candidats.map((s) => s.id),
+      })
+    : { data: [] };
+  const restantesParSlot = new Map<string, number>(
+    ((restantes ?? []) as { slot_id: string; restantes: number }[]).map((r) => [
+      r.slot_id,
+      r.restantes,
+    ]),
+  );
+
+  const reservables: CreneauReservable[] = candidats
+    .filter((slot) => (restantesParSlot.get(slot.id) ?? 0) > 0)
     .map((slot) => {
       const { demandable, raison } = disponibiliteCreneau(slot, maintenant);
       return {
@@ -122,6 +145,8 @@ export default async function PlanningProfessionnelPage({
         correspondBesoin: correspondAUnBesoin(slot),
         demandable,
         raison,
+        placesRestantes: restantesParSlot.get(slot.id) ?? 0,
+        capacite: slot.capacite ?? 1,
       };
     });
   const nbCorrespondants = reservables.filter((c) => c.demandable && c.correspondBesoin).length;
@@ -154,11 +179,16 @@ export default async function PlanningProfessionnelPage({
         slots={slots}
         mesReservationIds={[...mesSlotIds]}
         reservables={reservables}
+        enfants={enfants ?? []}
       />
 
-      <MesRecurrences professionalId={professionalId} reservations={mesRecurrences ?? []} />
+      <MesRecurrences
+        professionalId={professionalId}
+        reservations={mesRecurrences ?? []}
+        enfants={enfants ?? []}
+      />
 
-      <RecurrenceForm professionalId={professionalId} />
+      <RecurrenceForm professionalId={professionalId} enfants={enfants ?? []} />
 
       <NavigationBas />
     </div>
