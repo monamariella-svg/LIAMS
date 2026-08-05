@@ -73,6 +73,21 @@ export default async function PlanningPage({
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
 
+  // Le professionnel doit voir ce qu'il lui reste, pas seulement s'il est pris :
+  // un créneau de deux places dont une est réservée reste ouvert, et il doit le
+  // savoir aussi bien que le parent.
+  const { data: restantesPro } = (slots ?? []).length
+    ? await supabase.rpc("places_restantes_creneaux", {
+        p_slot_ids: (slots ?? []).map((s) => s.id),
+      })
+    : { data: [] };
+  const restantesParSlot = new Map<string, number>(
+    ((restantesPro ?? []) as { slot_id: string; restantes: number }[]).map((r) => [
+      r.slot_id,
+      r.restantes,
+    ]),
+  );
+
   // Lignes des demandes groupées en attente, avec le détail de chaque créneau.
   const { data: lignesDemandes } = (demandes ?? []).length
     ? await supabase
@@ -203,7 +218,11 @@ export default async function PlanningPage({
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-orange" /> Urgence
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" /> Occupé
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-400" /> Complet
+          </span>
+          <span className="ml-3 text-gray-400">
+            Les places libres s&apos;affichent sur les créneaux qui en accueillent
+            plusieurs.
           </span>
         </p>
         <WeekCalendar
@@ -213,17 +232,42 @@ export default async function PlanningPage({
           editable
           addSlotAction={ajouterCreneau}
           slotFooters={Object.fromEntries(
-            (slots ?? [])
-              .filter((slot) => slot.statut !== "occupe")
-              .map((slot) => [
+            (slots ?? []).map((slot) => {
+              const restantes = restantesParSlot.get(slot.id) ?? slot.capacite ?? 1;
+              const capacite = slot.capacite ?? 1;
+              const complet = restantes === 0;
+
+              return [
                 slot.id,
-                <form key={slot.id} action={supprimerCreneau}>
-                  <input type="hidden" name="slot_id" value={slot.id} />
-                  <button type="submit" className="text-[10px] underline opacity-70 hover:opacity-100">
-                    Retirer
-                  </button>
-                </form>,
-              ]),
+                <div key={slot.id} className="flex flex-col gap-0.5">
+                  {/* On ne mentionne les places que lorsqu'elles disent quelque
+                      chose : sur un créneau d'une place encore libre, c'est du
+                      bruit. */}
+                  {(capacite > 1 || complet) && (
+                    <span
+                      className={`text-[10px] ${complet ? "text-gray-500" : "text-liams-teal"}`}
+                    >
+                      {complet
+                        ? "Complet"
+                        : `${restantes}/${capacite} place${restantes > 1 ? "s" : ""} libre${restantes > 1 ? "s" : ""}`}
+                    </span>
+                  )}
+                  {/* Un créneau déjà réservé ne se retire pas : la famille
+                      compte dessus. */}
+                  {restantes === capacite && (
+                    <form action={supprimerCreneau}>
+                      <input type="hidden" name="slot_id" value={slot.id} />
+                      <button
+                        type="submit"
+                        className="text-[10px] underline opacity-70 hover:opacity-100"
+                      >
+                        Retirer
+                      </button>
+                    </form>
+                  )}
+                </div>,
+              ];
+            }),
           )}
         />
       </section>

@@ -8,7 +8,9 @@ import { notifierUtilisateur } from "@/lib/notify";
 import { geocodeAdresse } from "@/lib/geocoding";
 import { computeRecurringDates, parseISODate } from "@/lib/calendar";
 
-export type PlanningFormState = { error?: string; success?: boolean } | undefined;
+export type PlanningFormState =
+  | { error?: string; success?: boolean; message?: string }
+  | undefined;
 
 export async function ajouterCreneau(
   _prevState: PlanningFormState,
@@ -148,9 +150,17 @@ async function genererCreneaux(
     lieu_accueil: champs.lieuAccueil,
   }));
 
-  return supabase
+  // ignoreDuplicates laisse passer sans bruit les créneaux déjà présents à la
+  // même date et heure. C'est voulu — modifier une série ne doit pas écraser
+  // ce qui existe — mais il faut savoir combien ont réellement été créés,
+  // faute de quoi une série entièrement en collision s'annonce réussie sans
+  // que rien n'apparaisse au calendrier.
+  const { data, error } = await supabase
     .from("availability_slots")
-    .upsert(rows, { onConflict: "professional_id,date,heure_debut", ignoreDuplicates: true });
+    .upsert(rows, { onConflict: "professional_id,date,heure_debut", ignoreDuplicates: true })
+    .select("id");
+
+  return { error, crees: data?.length ?? 0, demandes: rows.length };
 }
 
 export async function ajouterCreneauxRecurrents(
@@ -182,11 +192,32 @@ export async function ajouterCreneauxRecurrents(
 
   if (erreurSerie) return { error: erreurSerie.message };
 
-  const { error } = await genererCreneaux(supabase, user.id, recurrence.id, champs);
+  const { error, crees, demandes } = await genererCreneaux(
+    supabase,
+    user.id,
+    recurrence.id,
+    champs,
+  );
   if (error) return { error: error.message };
 
+  // Aucun créneau créé : tous existaient déjà. Annoncer une réussite laisserait
+  // le professionnel chercher au calendrier quelque chose qui n'y est pas.
+  if (crees === 0) {
+    await supabase.from("slot_recurrences").delete().eq("id", recurrence.id);
+    return {
+      error:
+        "Ces créneaux figurent déjà dans votre calendrier. Vérifiez vos disponibilités avant d'ajouter cette récurrence.",
+    };
+  }
+
   revalidatePath("/planning");
-  return { success: true };
+  return {
+    success: true,
+    message:
+      crees < demandes
+        ? `${crees} créneau(x) ajouté(s) — ${demandes - crees} figuraient déjà dans votre calendrier.`
+        : undefined,
+  };
 }
 
 export async function modifierCreneauxRecurrents(
@@ -537,11 +568,15 @@ export async function traiterDemandeCreneaux(formData: FormData) {
 
   const { data: demande } = await supabase
     .from("demandes_creneaux")
-    .select("id, parent_id")
+    .select("id, parent_id, enfant_ids")
     .eq("id", demandeId)
     .eq("professional_id", user.id)
     .maybeSingle();
   if (!demande) return;
+
+  // Chaque enfant occupe une place. Une demande antérieure à la capacité n'en
+  // déclare aucun : elle en vaut une, comme elle l'a toujours fait.
+  const nbEnfants = Math.max(1, demande.enfant_ids?.length ?? 0);
 
   const { data: lignes } = await supabase
     .from("demande_creneau_lignes")
@@ -558,23 +593,22 @@ export async function traiterDemandeCreneaux(formData: FormData) {
       continue;
     }
 
-    // Réservation du créneau : le filtre sur "pas déjà occupé" rend la mise à
-    // jour atomique, un créneau pris entre-temps ne renvoie aucune ligne.
-    const { data: slotReserve } = await supabase
-      .from("availability_slots")
-      .update({ statut: "occupe" })
-      .eq("id", ligne.slot_id)
-      .eq("professional_id", user.id)
-      .neq("statut", "occupe")
-      .select("id")
-      .maybeSingle();
+    // Un créneau n'est plus « occupé » ou « libre » : il a des places, dont
+    // il reste un certain nombre. Accepter n'en bascule donc plus le statut —
+    // c'est le décompte qui dira, la prochaine fois, s'il en reste.
+    const { data: restantes } = await supabase.rpc("places_restantes", {
+      p_slot_id: ligne.slot_id,
+    });
+
+    const placesNecessaires = Math.max(1, nbEnfants);
+    const accepte = (restantes ?? 0) >= placesNecessaires;
 
     await supabase
       .from("demande_creneau_lignes")
-      .update({ statut: slotReserve ? "accepte" : "refuse" })
+      .update({ statut: accepte ? "accepte" : "refuse" })
       .eq("id", ligne.id);
 
-    if (slotReserve) nbAcceptes++;
+    if (accepte) nbAcceptes++;
   }
 
   await supabase.from("demandes_creneaux").update({ statut: "traitee" }).eq("id", demandeId);

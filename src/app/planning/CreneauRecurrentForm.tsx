@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { addDays, todayISO } from "@/lib/calendar";
 import {
@@ -77,12 +77,21 @@ export function CreneauRecurrentForm({
     recurrence ? ACTIONS[variante].modifier : ACTIONS[variante].creer,
     undefined,
   );
+  const [retouche, setRetouche] = useState(false);
   const textes = TEXTES[variante];
   const today = todayISO();
   const dansHuitSemaines = addDays(today, 56);
 
   const formulaire = (
-    <form action={formAction} className="mt-4 flex flex-col gap-3">
+    <form
+      action={formAction}
+      // Le résultat de l'envoi précédent reste affiché tant qu'on n'a rien
+      // retouché : dès que le professionnel modifie un champ, il prépare autre
+      // chose et le message d'avant ne le concerne plus.
+      onChange={() => setRetouche(true)}
+      onSubmit={() => setRetouche(false)}
+      className="mt-4 flex flex-col gap-3"
+    >
       {recurrence && <input type="hidden" name="recurrence_id" value={recurrence.id} />}
       <div>
         <p className="text-xs font-medium text-gray-700">Se répète le</p>
@@ -195,10 +204,12 @@ export function CreneauRecurrentForm({
         </label>
       </div>
 
-      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-      {state?.success && (
+      {!retouche && state?.error && (
+        <p className="text-sm text-red-600">{state.error}</p>
+      )}
+      {!retouche && state?.success && (
         <p className="text-sm text-liams-teal">
-          {recurrence ? "Récurrence modifiée." : textes.succesAjout}
+          {state.message ?? (recurrence ? "Récurrence modifiée." : textes.succesAjout)}
         </p>
       )}
 

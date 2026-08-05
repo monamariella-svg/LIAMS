@@ -134,6 +134,19 @@ export default async function PlanningProfessionnelPage({
 
   const reservables: CreneauReservable[] = candidats
     .filter((slot) => (restantesParSlot.get(slot.id) ?? 0) > 0)
+    .filter((slot) => {
+      // Un créneau d'urgence hors de sa fenêtre n'est pas commandable et ne le
+      // sera peut-être jamais : l'afficher barré n'aide pas, il encombre.
+      // Ceux qui sont dans la fenêtre restent, ce sont les seuls utiles.
+      const estUrgence =
+        slot.statut === "libre_urgence" ||
+        (slot.types_accueil ?? []).includes("urgence");
+      const seulementUrgence =
+        estUrgence &&
+        !(slot.types_accueil ?? ["ponctuel"]).some((t: string) => t !== "urgence");
+      if (!seulementUrgence) return true;
+      return disponibiliteCreneau(slot, maintenant).demandable;
+    })
     .map((slot) => {
       const { demandable, raison } = disponibiliteCreneau(slot, maintenant);
       return {
