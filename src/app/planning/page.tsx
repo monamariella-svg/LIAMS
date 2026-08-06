@@ -10,7 +10,6 @@ import { PlanningParent } from "./PlanningParent";
 import { DemandesRecues, type DemandeRecue } from "./DemandesRecues";
 import {
   ajouterCreneau,
-  supprimerCreneau,
   confirmerReservationUrgente,
   refuserReservationUrgente,
   validerRecurrence,
@@ -222,6 +221,29 @@ export default async function PlanningPage({
           Créneau retiré de votre calendrier.
         </p>
       )}
+      {annule === "serie_avec_familles" && (
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Série supprimée. Les familles concernées ont reçu votre explication par
+          email et leurs gardes ont été annulées.
+        </p>
+      )}
+      {annule === "serie" && (
+        <p className="rounded-lg bg-gray-100 px-4 py-3 text-sm text-gray-700">
+          Série supprimée. Aucune famille n&apos;y avait réservé.
+        </p>
+      )}
+      {annule === "serie_libres" && (
+        <p className="rounded-lg bg-gray-100 px-4 py-3 text-sm text-gray-700">
+          Créneaux libres retirés. Les gardes déjà réservées sont conservées et
+          restent à votre calendrier.
+        </p>
+      )}
+      {annule === "motif_manquant" && (
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          Suppression annulée : une explication est nécessaire lorsque des
+          familles peuvent être concernées.
+        </p>
+      )}
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mon calendrier</h2>
@@ -278,7 +300,20 @@ export default async function PlanningPage({
         />
       </section>
 
-      <RecurrencesList recurrences={(recurrences ?? []) as RecurrenceExistante[]} />
+      <RecurrencesList
+        recurrences={
+          (recurrences ?? []).map((rec) => ({
+            ...rec,
+            // Combien de créneaux de cette série une famille a-t-elle pris :
+            // c'est ce qui décide si la suppression doit poser une question.
+            reservations: (slots ?? []).filter(
+              (s) =>
+                s.recurrence_id === rec.id &&
+                (restantesParSlot.get(s.id) ?? s.capacite ?? 1) < (s.capacite ?? 1),
+            ).length,
+          })) as RecurrenceExistante[]
+        }
+      />
 
       <CreneauRecurrentForm lieuAccueilProfil={profilPro?.lieu_accueil} />
 

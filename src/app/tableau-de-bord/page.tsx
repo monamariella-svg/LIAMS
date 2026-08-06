@@ -139,10 +139,10 @@ export default async function TableauDeBordPage() {
             Compléter mon profil parent
           </Link>
           <Link
-            href="/planning"
+            href="/recherche"
             className="mt-3 self-center text-sm text-liams-navy underline"
           >
-            Mes besoins de garde et les professionnels disponibles
+            Chercher un accueil pour mes enfants
           </Link>
         </>
       )}

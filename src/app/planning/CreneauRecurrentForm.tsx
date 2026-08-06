@@ -21,6 +21,9 @@ export type RecurrenceExistante = {
   capacite?: number;
   types_accueil?: string[];
   lieu_accueil?: string | null;
+  /** Nombre de créneaux de la série qu'une famille a réservés. Décide de la
+   * question posée avant suppression. */
+  reservations?: number;
 };
 
 const TYPES_ACCUEIL = [

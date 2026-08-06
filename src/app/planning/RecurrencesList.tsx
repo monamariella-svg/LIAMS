@@ -39,6 +39,57 @@ export function RecurrencesList({
     variante === "besoins" ? supprimerBesoinRecurrence : supprimerRecurrence;
   const textes = TEXTES[variante];
 
+  /** Supprimer une série efface des semaines de garde. Le motif y est exigé,
+   * là où il reste facultatif sur un créneau isolé : les familles ont organisé
+   * leur vie autour, elles méritent une explication. */
+  const demanderMotif = (reservations: number) => (evenement: React.FormEvent) => {
+    const formulaire = evenement.currentTarget as HTMLFormElement;
+
+    if (
+      !window.confirm(
+        reservations > 0
+          ? `Cette série porte ${reservations} garde(s) déjà réservée(s) par des familles.\n\nSupprimer la série ?`
+          : "Supprimer cette série effacera tous ses créneaux à venir.\n\nContinuer ?",
+      )
+    ) {
+      evenement.preventDefault();
+      return;
+    }
+
+    // Le choix n'est proposé que s'il se pose : sans réservation, il n'y a
+    // rien à épargner.
+    if (reservations > 0) {
+      const toutAnnuler = window.confirm(
+        "Souhaitez-vous annuler aussi les gardes déjà réservées ?\n\n" +
+          "OK — tout annuler, les familles seront prévenues.\n" +
+          "Annuler — ne retirer que les créneaux libres, les gardes réservées sont conservées.",
+      );
+      const champPortee = formulaire.elements.namedItem(
+        "portee",
+      ) as HTMLInputElement | null;
+      if (champPortee) champPortee.value = toutAnnuler ? "tout" : "libres";
+    }
+
+    const motif = window.prompt(
+      "Expliquez aux familles pourquoi vous supprimez cette série. Ce message leur sera transmis.",
+      "",
+    );
+
+    if (!motif || !motif.trim()) {
+      window.alert("Une explication est nécessaire — la suppression est annulée.");
+      evenement.preventDefault();
+      return;
+    }
+
+    // Le formulaire soumis, et non une référence partagée : la liste en compte
+    // autant que de séries, et une référence unique désignerait la dernière
+    // rendue plutôt que celle sur laquelle on vient de cliquer.
+    const champ = (evenement.currentTarget as HTMLFormElement).elements.namedItem(
+      "motif",
+    ) as HTMLInputElement | null;
+    if (champ) champ.value = motif.trim();
+  };
+
   if (recurrences.length === 0) return null;
 
   return (
@@ -66,8 +117,21 @@ export function RecurrencesList({
                 >
                   {idEnEdition === rec.id ? "Fermer" : "Modifier"}
                 </button>
-                <form action={supprimerAction}>
+                <form
+                  action={supprimerAction}
+                  onSubmit={
+                    variante === "creneaux"
+                      ? demanderMotif(rec.reservations ?? 0)
+                      : undefined
+                  }
+                >
                   <input type="hidden" name="recurrence_id" value={rec.id} />
+                  {variante === "creneaux" && (
+                    <>
+                      <input type="hidden" name="motif" />
+                      <input type="hidden" name="portee" defaultValue="tout" />
+                    </>
+                  )}
                   <button
                     type="submit"
                     className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"

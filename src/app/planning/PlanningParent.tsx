@@ -15,6 +15,7 @@ import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { PhotoProfil } from "@/components/PhotoProfil";
 import { BadgeIcone } from "@/components/BadgeIcone";
 import { NavigationBas } from "@/components/NavigationBas";
+import { AnnulerReservationButton } from "./AnnulerReservationButton";
 import { demanderAjoutReseau } from "@/app/reseau/actions";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
@@ -70,7 +71,7 @@ export async function PlanningParent({
     supabase
       .from("urgent_bookings")
       .select(
-        "id, statut, professional_id, slot:availability_slots(id, date, heure_debut, heure_fin)",
+        "id, statut, professional_id, enfant_ids, slot:availability_slots(id, date, heure_debut, heure_fin)",
       )
       .eq("parent_id", userId)
       .in("statut", ["en_attente", "confirme"]),
@@ -114,7 +115,16 @@ export async function PlanningParent({
 
   // 1. Gardes d'urgence réservées (datées) — confirmées ou en attente.
   //    Si un même créneau porte les deux, la confirmation l'emporte.
-  const reservationsParSlot = new Map<string, { slot: SlotJoint; statut: string; professionalId: string }>();
+  const reservationsParSlot = new Map<
+    string,
+    {
+      slot: SlotJoint;
+      statut: string;
+      professionalId: string;
+      bookingId: string;
+      enfantIds: string[];
+    }
+  >();
   for (const booking of bookings ?? []) {
     // Jointure many-to-one : PostgREST renvoie un objet, mais sans types
     // générés le client suppose un tableau — d'où le cast.
@@ -126,9 +136,25 @@ export async function PlanningParent({
       slot,
       statut: booking.statut,
       professionalId: booking.professional_id,
+      bookingId: booking.id,
+      enfantIds: booking.enfant_ids ?? [],
     });
   }
-  for (const { slot, statut, professionalId } of reservationsParSlot.values()) {
+
+  // Prénoms des enfants réservés, pour proposer de n'en retirer qu'un.
+  const { data: mesEnfants } = await supabase
+    .from("enfants")
+    .select("id, prenom")
+    .eq("parent_id", userId);
+  const prenomParEnfant = new Map((mesEnfants ?? []).map((e) => [e.id, e.prenom]));
+
+  for (const {
+    slot,
+    statut,
+    professionalId,
+    bookingId,
+    enfantIds,
+  } of reservationsParSlot.values()) {
     slots.push({
       id: slot.id,
       date: slot.date,
@@ -137,12 +163,21 @@ export async function PlanningParent({
       statut: statut === "confirme" ? "libre" : "libre_urgence",
     });
     footers[slot.id] = (
-      <Link
-        href={`/reseau/${professionalId}`}
-        className="text-[10px] underline opacity-70 hover:opacity-100"
-      >
-        Voir le pro
-      </Link>
+      <div className="flex flex-col gap-0.5">
+        <Link
+          href={`/reseau/${professionalId}`}
+          className="text-[10px] underline opacity-70 hover:opacity-100"
+        >
+          Voir le pro
+        </Link>
+        <AnnulerReservationButton
+          type="urgente"
+          reservationId={bookingId}
+          enfants={enfantIds
+            .map((id) => ({ id, prenom: prenomParEnfant.get(id) ?? "" }))
+            .filter((e) => e.prenom)}
+        />
+      </div>
     );
   }
 

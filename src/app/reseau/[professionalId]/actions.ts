@@ -32,6 +32,63 @@ async function enfantsRetenus(
   return siens.size === 1 ? [...siens] : [];
 }
 
+/** Annulation par le parent, éventuellement pour un seul de ses enfants.
+ *
+ * Retirer un enfant d'une réservation qui en porte deux libère une place et
+ * laisse l'autre en cours : une famille dont un aîné est malade n'a pas à
+ * renoncer à la garde du second. La réservation n'est annulée entièrement que
+ * lorsqu'il ne reste plus personne. */
+export async function annulerReservation(formData: FormData) {
+  const { supabase, user } = await requireUser("parent");
+
+  const type = String(formData.get("type") ?? "");
+  const reservationId = String(formData.get("reservation_id") ?? "");
+  const enfantRetire = String(formData.get("enfant_id") ?? "");
+  if (!reservationId) return;
+
+  const table =
+    type === "urgente"
+      ? "urgent_bookings"
+      : type === "recurrente"
+        ? "recurring_bookings"
+        : null;
+  if (!table) return;
+
+  const { data: reservation } = await supabase
+    .from(table)
+    .select("id, professional_id, enfant_ids")
+    .eq("id", reservationId)
+    .eq("parent_id", user.id)
+    .maybeSingle();
+  if (!reservation) return;
+
+  const restants = enfantRetire
+    ? (reservation.enfant_ids ?? []).filter((id: string) => id !== enfantRetire)
+    : [];
+
+  if (restants.length > 0) {
+    await supabase.from(table).update({ enfant_ids: restants }).eq("id", reservationId);
+  } else {
+    await supabase.from(table).update({ statut: "annule" }).eq("id", reservationId);
+  }
+
+  await notifierUtilisateur(
+    supabase,
+    reservation.professional_id,
+    restants.length > 0 ? "Réservation modifiée" : "Réservation annulée",
+    restants.length > 0
+      ? `<p>Un parent a retiré un enfant d'une réservation. Une place se libère
+          sur le créneau concerné.</p>
+         ${lienVers("/planning", "Voir mon planning")}`
+      : `<p>Un parent a annulé sa réservation. Le créneau concerné est de
+          nouveau disponible.</p>
+         ${lienVers("/planning", "Voir mon planning")}`,
+  );
+
+  revalidatePath("/planning");
+  revalidatePath(`/reseau/${reservation.professional_id}`);
+}
+
 export async function demanderReservationUrgente(formData: FormData) {
   const { supabase, user } = await requireUser("parent");
 

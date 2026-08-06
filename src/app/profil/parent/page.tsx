@@ -91,7 +91,7 @@ export default async function ProfilParentPage() {
           automatiquement.
         </p>
         <Link
-          href="/planning"
+          href="/recherche"
           className="mt-4 inline-block rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90"
         >
           Commencer votre recherche

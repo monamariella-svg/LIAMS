@@ -269,20 +269,146 @@ export async function modifierCreneauxRecurrents(
   return { success: true };
 }
 
+/** Retrait d'une série entière, réservations comprises.
+ *
+ * Ce n'est pas retirer un mardi : une série porte des semaines ou des mois de
+ * garde, et les familles ont organisé leur vie autour. Le motif est donc exigé
+ * ici, là où il reste facultatif sur un créneau isolé. */
 export async function supprimerRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
+  const motif = String(formData.get("motif") ?? "").trim();
   if (!recurrenceId) return;
+  if (!motif) redirect("/planning?annule=motif_manquant");
 
-  // Supprime les créneaux libres de la série ; les créneaux occupés restent
-  // (une garde y est réservée) et sont détachés de la série par le
-  // "on delete set null" du schéma.
-  await supabase
+  // « tout » annule aussi les gardes réservées ; « libres » ne retire que les
+  // créneaux que personne n'a pris, laissant les engagements en cours.
+  const portee = String(formData.get("portee") ?? "tout");
+
+  const { data: creneaux } = await supabase
     .from("availability_slots")
-    .delete()
+    .select("id, date, heure_debut")
     .eq("recurrence_id", recurrenceId)
+    .eq("professional_id", user.id);
+
+  const idsCreneaux = (creneaux ?? []).map((c) => c.id);
+  const dateParCreneau = new Map((creneaux ?? []).map((c) => [c.id, c.date]));
+
+  // Les familles à prévenir, les enfants concernés, et les jours annulés pour
+  // chacun : un email par créneau serait illisible sur une série de plusieurs
+  // mois, un email sans les dates serait inutilisable.
+  const parents = new Map<string, Map<string, Set<string>>>();
+  const noter = (
+    parentId: string,
+    enfantIds: string[] | null,
+    dates: string[],
+  ) => {
+    const parEnfant = parents.get(parentId) ?? new Map<string, Set<string>>();
+    for (const enfantId of enfantIds ?? []) {
+      const jours = parEnfant.get(enfantId) ?? new Set<string>();
+      for (const d of dates) jours.add(d);
+      parEnfant.set(enfantId, jours);
+    }
+    parents.set(parentId, parEnfant);
+  };
+
+  // Les créneaux que quelqu'un a pris : ils décident de ce qu'on supprime
+  // lorsque le professionnel ne veut retirer que ses disponibilités libres.
+  const creneauxPris = new Set<string>();
+
+  const { data: urgences } = idsCreneaux.length
+    ? await supabase
+        .from("urgent_bookings")
+        .select("id, parent_id, enfant_ids, slot_id")
+        .in("slot_id", idsCreneaux)
+        .in("statut", ["en_attente", "confirme"])
+    : { data: [] };
+  for (const u of urgences ?? []) creneauxPris.add(u.slot_id);
+
+  const { data: lignes } = idsCreneaux.length
+    ? await supabase
+        .from("demande_creneau_lignes")
+        .select("id, slot_id, demandes_creneaux(parent_id, enfant_ids)")
+        .in("slot_id", idsCreneaux)
+        .in("statut", ["propose", "accepte"])
+    : { data: [] };
+  for (const l of lignes ?? []) creneauxPris.add(l.slot_id);
+
+  const { data: serie } = await supabase
+    .from("slot_recurrences")
+    .select("jours, heure_debut")
+    .eq("id", recurrenceId)
     .eq("professional_id", user.id)
-    .neq("statut", "occupe");
+    .maybeSingle();
+
+  // Les réservations récurrentes ne visent aucun créneau : elles se
+  // reconnaissent au jour et à l'horaire de la série.
+  const { data: recurrentes } = serie
+    ? await supabase
+        .from("recurring_bookings")
+        .select("id, parent_id, enfant_ids, jour_semaine")
+        .eq("professional_id", user.id)
+        .eq("heure_debut", serie.heure_debut)
+        .in("statut", ["en_attente", "actif"])
+    : { data: [] };
+  const recurrentesConcernees = (recurrentes ?? []).filter((r) =>
+    (serie?.jours ?? []).includes(r.jour_semaine),
+  );
+
+  if (portee === "tout") {
+    for (const u of urgences ?? []) {
+      noter(u.parent_id, u.enfant_ids, [dateParCreneau.get(u.slot_id) ?? ""]);
+    }
+    if ((urgences ?? []).length > 0) {
+      await supabase
+        .from("urgent_bookings")
+        .update({ statut: "annule" })
+        .in("id", (urgences ?? []).map((u) => u.id));
+    }
+
+    for (const l of lignes ?? []) {
+      const d = l.demandes_creneaux as unknown as {
+        parent_id: string;
+        enfant_ids: string[] | null;
+      } | null;
+      if (d?.parent_id) {
+        noter(d.parent_id, d.enfant_ids, [dateParCreneau.get(l.slot_id) ?? ""]);
+      }
+    }
+    if ((lignes ?? []).length > 0) {
+      await supabase
+        .from("demande_creneau_lignes")
+        .update({ statut: "refuse" })
+        .in("id", (lignes ?? []).map((l) => l.id));
+    }
+
+    // Une récurrence couvre toutes les dates de la série qui tombent son jour.
+    for (const r of recurrentesConcernees) {
+      const dates = (creneaux ?? [])
+        .filter((c) => new Date(c.date).getDay() === (r.jour_semaine + 1) % 7)
+        .map((c) => c.date);
+      noter(r.parent_id, r.enfant_ids, dates);
+    }
+    if (recurrentesConcernees.length > 0) {
+      await supabase
+        .from("recurring_bookings")
+        .update({ statut: "annule" })
+        .in("id", recurrentesConcernees.map((r) => r.id));
+    }
+  }
+
+  // « tout » efface la série entière ; « libres » épargne les créneaux pris,
+  // qui se détachent de la série sans disparaître.
+  const aSupprimer =
+    portee === "tout" ? idsCreneaux : idsCreneaux.filter((id) => !creneauxPris.has(id));
+
+  if (aSupprimer.length > 0) {
+    await supabase
+      .from("availability_slots")
+      .delete()
+      .in("id", aSupprimer)
+      .eq("professional_id", user.id);
+  }
 
   await supabase
     .from("slot_recurrences")
@@ -290,7 +416,64 @@ export async function supprimerRecurrence(formData: FormData) {
     .eq("id", recurrenceId)
     .eq("professional_id", user.id);
 
+  const { data: moi } = await supabase
+    .from("identites")
+    .select("prenom, nom")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const nomPro = [moi?.prenom, moi?.nom].filter(Boolean).join(" ") || "Le professionnel";
+
+  const tousLesEnfants = [
+    ...new Set([...parents.values()].flatMap((m) => [...m.keys()])),
+  ];
+  const { data: enfants } = tousLesEnfants.length
+    ? await supabase.from("enfants").select("id, prenom").in("id", tousLesEnfants)
+    : { data: [] };
+  const prenomParId = new Map((enfants ?? []).map((e) => [e.id, e.prenom]));
+
+  const enFrancais = (iso: string) =>
+    new Date(iso).toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+
+  // Un seul email par famille, listant les jours annulés enfant par enfant :
+  // une série de plusieurs mois produirait autrement des dizaines de messages
+  // qu'on cesserait de lire au troisième.
+  for (const [parentId, parEnfant] of parents) {
+    const blocs = [...parEnfant.entries()]
+      .map(([enfantId, jours]) => {
+        const prenom = prenomParId.get(enfantId);
+        if (!prenom) return "";
+        const dates = [...jours].filter(Boolean).sort();
+        if (dates.length === 0) return `<li><strong>${prenom}</strong></li>`;
+        return `<li><strong>${prenom}</strong><br />${dates
+          .map(enFrancais)
+          .join("<br />")}</li>`;
+      })
+      .filter(Boolean);
+
+    await notifierUtilisateur(
+      supabase,
+      parentId,
+      "Vos gardes régulières sont annulées",
+      `<p><strong>${nomPro}</strong> a annulé la série de créneaux sur laquelle
+        reposaient vos gardes régulières.</p>
+       <p>Motif indiqué : <em>${motif.replace(/[<>]/g, "")}</em></p>
+       ${blocs.length > 0 ? `<p>Gardes annulées :</p><ul>${blocs.join("")}</ul>` : ""}
+       ${lienVers("/recherche", "Chercher une autre solution")}`,
+    );
+  }
+
   revalidatePath("/planning");
+  redirect(
+    parents.size > 0
+      ? "/planning?annule=serie_avec_familles"
+      : portee === "libres"
+        ? "/planning?annule=serie_libres"
+        : "/planning?annule=serie",
+  );
 }
 
 /** Retrait d'un créneau, réservations comprises.
@@ -320,16 +503,23 @@ export async function supprimerCreneau(formData: FormData) {
     month: "long",
   })} de ${creneau.heure_debut.slice(0, 5)} à ${creneau.heure_fin.slice(0, 5)}`;
 
-  // Les parents à prévenir : ceux dont la réservation vivait sur ce créneau.
-  const parents = new Set<string>();
+  // Les parents à prévenir, et pour quels enfants : « une garde a été
+  // annulée » sans dire laquelle inquiète sans informer quand on a deux
+  // enfants placés.
+  const parents = new Map<string, Set<string>>();
+  const noter = (parentId: string, enfantIds: string[] | null) => {
+    const connus = parents.get(parentId) ?? new Set<string>();
+    for (const id of enfantIds ?? []) connus.add(id);
+    parents.set(parentId, connus);
+  };
 
   const { data: urgences } = await supabase
     .from("urgent_bookings")
-    .select("id, parent_id")
+    .select("id, parent_id, enfant_ids")
     .eq("slot_id", slotId)
     .in("statut", ["en_attente", "confirme"]);
 
-  for (const u of urgences ?? []) parents.add(u.parent_id);
+  for (const u of urgences ?? []) noter(u.parent_id, u.enfant_ids);
 
   if ((urgences ?? []).length > 0) {
     await supabase
@@ -340,14 +530,16 @@ export async function supprimerCreneau(formData: FormData) {
 
   const { data: lignes } = await supabase
     .from("demande_creneau_lignes")
-    .select("id, demandes_creneaux(parent_id)")
+    .select("id, demandes_creneaux(parent_id, enfant_ids)")
     .eq("slot_id", slotId)
     .in("statut", ["propose", "accepte"]);
 
   for (const l of lignes ?? []) {
-    const parentId = (l.demandes_creneaux as unknown as { parent_id: string } | null)
-      ?.parent_id;
-    if (parentId) parents.add(parentId);
+    const demande = l.demandes_creneaux as unknown as {
+      parent_id: string;
+      enfant_ids: string[] | null;
+    } | null;
+    if (demande?.parent_id) noter(demande.parent_id, demande.enfant_ids);
   }
 
   if ((lignes ?? []).length > 0) {
@@ -369,15 +561,43 @@ export async function supprimerCreneau(formData: FormData) {
     ? `<p>Motif indiqué : <em>${motif.replace(/[<>]/g, "")}</em></p>`
     : "";
 
-  for (const parentId of parents) {
+  const { data: moi } = await supabase
+    .from("identites")
+    .select("prenom, nom")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const nomPro =
+    [moi?.prenom, moi?.nom].filter(Boolean).join(" ") || "Le professionnel";
+
+  // Prénoms des enfants concernés, pour que le parent sache lequel est touché.
+  const tousLesEnfants = [...new Set([...parents.values()].flatMap((s) => [...s]))];
+  const { data: enfants } = tousLesEnfants.length
+    ? await supabase.from("enfants").select("id, prenom").in("id", tousLesEnfants)
+    : { data: [] };
+  const prenomParId = new Map((enfants ?? []).map((e) => [e.id, e.prenom]));
+
+  for (const [parentId, enfantIds] of parents) {
+    const prenoms = [...enfantIds]
+      .map((id) => prenomParId.get(id))
+      .filter(Boolean) as string[];
+
+    // Silence plutôt qu'approximation : sans prénom lisible, on n'invente pas.
+    const phraseEnfants =
+      prenoms.length > 0
+        ? `<p>Concerne ${prenoms.length > 1 ? "vos enfants" : "votre enfant"} :
+           <strong>${prenoms.join(", ")}</strong>.</p>`
+        : "";
+
     await notifierUtilisateur(
       supabase,
       parentId,
       "Une garde a été annulée",
-      `<p>Le professionnel a annulé le créneau du <strong>${quand}</strong>.</p>
+      `<p><strong>${nomPro}</strong> a annulé le créneau du
+        <strong>${quand}</strong>.</p>
+       ${phraseEnfants}
        ${phraseMotif}
        <p>Vous pouvez chercher une autre solution pour cette date.</p>
-       ${lienVers("/planning", "Voir mes besoins de garde")}`,
+       ${lienVers("/recherche", "Chercher une autre solution")}`,
     );
   }
 

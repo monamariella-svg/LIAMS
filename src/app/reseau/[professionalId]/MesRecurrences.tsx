@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import type { EnfantSelectionnable } from "@/components/SelectionEnfants";
+import { AnnulerReservationButton } from "@/app/planning/AnnulerReservationButton";
 import { RecurrenceForm, type ReservationRecurrente } from "./RecurrenceForm";
-import { annulerReservationRecurrente } from "./actions";
 
 type ReservationAvecStatut = ReservationRecurrente & { statut: string };
 
@@ -55,16 +55,19 @@ export function MesRecurrences({
                   >
                     {idEnEdition === rec.id ? "Fermer" : "Modifier"}
                   </button>
-                  <form action={annulerReservationRecurrente}>
-                    <input type="hidden" name="recurrence_id" value={rec.id} />
-                    <input type="hidden" name="professional_id" value={professionalId} />
-                    <button
-                      type="submit"
-                      className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
-                    >
-                      Annuler
-                    </button>
-                  </form>
+                  {/* Retirer un enfant d'une récurrence qui en porte deux
+                      libère une place et laisse la garde du second : une
+                      famille n'a pas à tout défaire pour un seul changement. */}
+                  <AnnulerReservationButton
+                    type="recurrente"
+                    reservationId={rec.id}
+                    enfants={(rec.enfant_ids ?? [])
+                      .map((id) => ({
+                        id,
+                        prenom: enfants.find((e) => e.id === id)?.prenom ?? "",
+                      }))
+                      .filter((e) => e.prenom)}
+                  />
                 </div>
               </div>
               {idEnEdition === rec.id && (
