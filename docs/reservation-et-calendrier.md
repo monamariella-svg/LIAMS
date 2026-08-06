@@ -129,6 +129,20 @@ MAM reste une assistante maternelle, elle exerce simplement ailleurs qu'à son
 domicile. D'où deux champs séparés au profil : le **métier** et le **cadre
 d'exercice**.
 
+### Les établissements figurent d'office dans les propositions d'urgence
+
+Hors réseau, le parcours d'urgence ne retient que les professionnels portant
+« Accueil de qualité » ou « Super Expérience ». **Les établissements
+échapperont à ce filtre** : un agrément PMI, des inspections régulières et une
+équipe salariée offrent des garanties qu'un particulier ne donne pas seul, et
+exiger d'eux un badge attribué à la main n'aurait pas de sens.
+
+C'est aussi ce qui répond au problème de la liste vide au lancement : un parent
+sans réseau trouvera des établissements là où il n'aurait trouvé personne.
+
+*Repère laissé dans `src/app/recherche/urgence/page.tsx`, à l'endroit exact où
+la condition devra s'élargir.*
+
 **L'ordre importe** : le calendrier pour les personnes d'abord, les
 établissements ensuite. La capacité multi-enfants est précisément ce dont une
 crèche a besoin — construite d'abord pour les individus, elle leur sera

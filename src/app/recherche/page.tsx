@@ -50,13 +50,9 @@ export default async function RecherchePage() {
       />
 
       <Choix
-        href={aUnReseau ? "/reseau" : "/planning"}
+        href="/recherche/urgence"
         titre="Accueil d'urgence"
-        description={
-          aUnReseau
-            ? "Une garde imprévue, entre 20 h et 2 h avant son début. Les professionnels de votre réseau de confiance ouvrent des créneaux d'urgence — c'est là qu'il faut regarder en premier."
-            : "Une garde imprévue, entre 20 h et 2 h avant son début. Il vous faut d'abord un réseau de confiance : commencez par entrer en relation avec des professionnels, vous pourrez ensuite les solliciter au dernier moment."
-        }
+        description="Une garde imprévue, dans les heures qui viennent. Les professionnels dont un créneau d'urgence est ouvert vous sont proposés, ceux de votre réseau en premier."
       />
 
       {dejaDesBesoins && (
