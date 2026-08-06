@@ -20,14 +20,21 @@ import {
 export default async function PlanningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; annule?: string }>;
+  searchParams: Promise<{ week?: string; annule?: string; enfant?: string }>;
 }) {
   const { supabase, user, role } = await requireUserParmi(["professionnel", "parent"]);
-  const { week, annule } = await searchParams;
+  const { week, annule, enfant } = await searchParams;
   const weekStart = startOfWeek(week || todayISO());
 
   if (role === "parent") {
-    return <PlanningParent supabase={supabase} userId={user.id} weekStart={weekStart} />;
+    return (
+      <PlanningParent
+        supabase={supabase}
+        userId={user.id}
+        weekStart={weekStart}
+        enfantFiltre={enfant}
+      />
+    );
   }
 
   const [

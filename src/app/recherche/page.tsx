@@ -15,20 +15,12 @@ import { NavigationBas } from "@/components/NavigationBas";
 export default async function RecherchePage() {
   const { supabase, user } = await requireUser("parent");
 
-  const [{ count: nbBesoins }, { count: nbReseau }] = await Promise.all([
-    supabase
-      .from("besoins_garde")
-      .select("id", { count: "exact", head: true })
-      .eq("parent_id", user.id),
-    supabase
-      .from("parent_networks")
-      .select("parent_id", { count: "exact", head: true })
-      .eq("parent_id", user.id)
-      .eq("statut", "accepte"),
-  ]);
+  const { count: nbBesoins } = await supabase
+    .from("besoins_garde")
+    .select("id", { count: "exact", head: true })
+    .eq("parent_id", user.id);
 
   const dejaDesBesoins = (nbBesoins ?? 0) > 0;
-  const aUnReseau = (nbReseau ?? 0) > 0;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">

@@ -38,11 +38,14 @@ export async function PlanningParent({
   supabase,
   userId,
   weekStart,
+  enfantFiltre,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>;
   userId: string;
   weekStart: string;
+  /** Identifiant de l'enfant dont on veut voir le seul planning. Absent : tous. */
+  enfantFiltre?: string;
 }) {
   const [
     { data: besoins },
@@ -94,7 +97,7 @@ export async function PlanningParent({
     supabase.from("professional_photos").select("professional_id, fichier_url").order("ordre"),
     supabase
       .from("demandes_creneaux")
-      .select("id, professional_id, statut")
+      .select("id, professional_id, statut, enfant_ids")
       .eq("parent_id", userId)
       .in("statut", ["en_attente", "traitee"]),
   ]);
@@ -148,6 +151,17 @@ export async function PlanningParent({
     .eq("parent_id", userId);
   const prenomParEnfant = new Map((mesEnfants ?? []).map((e) => [e.id, e.prenom]));
 
+  /** Une réservation concerne-t-elle l'enfant filtré ?
+   *
+   * Sans filtre, tout passe. Une réservation antérieure aux enfants sur les
+   * réservations n'en déclare aucun : on la montre plutôt que de la cacher,
+   * une garde oubliée du calendrier étant pire qu'une garde mal rangée. */
+  const concerneEnfant = (ids: string[]) =>
+    !enfantFiltre || ids.length === 0 || ids.includes(enfantFiltre);
+
+  const prenomsDe = (ids: string[]) =>
+    ids.map((id) => prenomParEnfant.get(id)).filter(Boolean).join(", ");
+
   for (const {
     slot,
     statut,
@@ -155,6 +169,8 @@ export async function PlanningParent({
     bookingId,
     enfantIds,
   } of reservationsParSlot.values()) {
+    if (!concerneEnfant(enfantIds)) continue;
+
     slots.push({
       id: slot.id,
       date: slot.date,
@@ -164,6 +180,13 @@ export async function PlanningParent({
     });
     footers[slot.id] = (
       <div className="flex flex-col gap-0.5">
+        {/* Le prénom sur la réservation : sans lui, la vue d'ensemble d'un
+            parent de deux enfants est illisible. */}
+        {prenomsDe(enfantIds) && (
+          <span className="text-[10px] font-medium text-liams-navy">
+            {prenomsDe(enfantIds)}
+          </span>
+        )}
         <Link
           href={`/reseau/${professionalId}`}
           className="text-[10px] underline opacity-70 hover:opacity-100"
@@ -187,7 +210,10 @@ export async function PlanningParent({
   for (const ligne of lignesDemandes ?? []) {
     const slot = ligne.slot as unknown as SlotJoint | null;
     if (!slot || reservationsParSlot.has(slot.id)) continue;
-    const professionalId = demandeParId.get(ligne.demande_id)?.professional_id;
+    const demande = demandeParId.get(ligne.demande_id);
+    const enfantsDemande = (demande?.enfant_ids ?? []) as string[];
+    if (!concerneEnfant(enfantsDemande)) continue;
+
     slots.push({
       id: slot.id,
       date: slot.date,
@@ -195,14 +221,21 @@ export async function PlanningParent({
       heure_fin: slot.heure_fin,
       statut: ligne.statut === "accepte" ? "libre" : "libre_urgence",
     });
-    if (professionalId) {
+    if (demande?.professional_id) {
       footers[slot.id] = (
-        <Link
-          href={`/reseau/${professionalId}`}
-          className="text-[10px] underline opacity-70 hover:opacity-100"
-        >
-          Voir le pro
-        </Link>
+        <div className="flex flex-col gap-0.5">
+          {prenomsDe(enfantsDemande) && (
+            <span className="text-[10px] font-medium text-liams-navy">
+              {prenomsDe(enfantsDemande)}
+            </span>
+          )}
+          <Link
+            href={`/reseau/${demande.professional_id}`}
+            className="text-[10px] underline opacity-70 hover:opacity-100"
+          >
+            Voir le pro
+          </Link>
+        </div>
       );
     }
   }
@@ -494,6 +527,37 @@ export async function PlanningParent({
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mes besoins de garde</h2>
+
+        {/* Un parent de deux enfants lit un calendrier où tout se mélange :
+            l'un chez une assistante maternelle le matin, l'autre récupéré le
+            soir. Le filtre rend chaque planning lisible séparément. */}
+        {(mesEnfants ?? []).length > 1 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Link
+              href="/planning"
+              className={`rounded-full px-3 py-1 text-xs ${
+                enfantFiltre
+                  ? "border border-gray-300 text-gray-600 hover:border-liams-navy"
+                  : "bg-liams-navy text-white"
+              }`}
+            >
+              Tous les enfants
+            </Link>
+            {(mesEnfants ?? []).map((enfant) => (
+              <Link
+                key={enfant.id}
+                href={`/planning?enfant=${enfant.id}`}
+                className={`rounded-full px-3 py-1 text-xs ${
+                  enfantFiltre === enfant.id
+                    ? "bg-liams-navy text-white"
+                    : "border border-gray-300 text-gray-600 hover:border-liams-navy"
+                }`}
+              >
+                {enfant.prenom}
+              </Link>
+            ))}
+          </div>
+        )}
         <p className="mb-3 text-xs text-gray-500">
           <span className="mr-3 inline-flex items-center gap-1">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-teal" /> Confirmée

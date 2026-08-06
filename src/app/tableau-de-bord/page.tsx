@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { computeParentProgress, computeProfessionalProgress } from "@/lib/progress";
+import { TuileNavigation } from "@/components/TuileNavigation";
 
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
@@ -111,7 +112,7 @@ export default async function TableauDeBordPage() {
   const profilComplet = pourcentage !== null && pourcentage >= 100;
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-1 flex-col justify-center px-6 py-16 text-center">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-6 py-16 text-center">
       <h1 className="text-2xl font-semibold text-liams-navy">
         {/* Les comptes créés avant que le prénom existe n'en ont pas :
             un accueil sans prénom vaut mieux qu'un accueil bancal. */}
@@ -131,62 +132,80 @@ export default async function TableauDeBordPage() {
         </Link>
       )}
       {profile?.role === "parent" && (
-        <>
-          <Link
-            href="/profil/parent"
-            className="mt-6 self-center rounded-full bg-liams-orange px-6 py-3 font-medium text-white hover:opacity-90"
-          >
-            Compléter mon profil parent
-          </Link>
-          <Link
+        <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
+          <TuileNavigation
             href="/recherche"
-            className="mt-3 self-center text-sm text-liams-navy underline"
-          >
-            Chercher un accueil pour mes enfants
-          </Link>
-        </>
+            icone="recherche"
+            titre="Chercher un accueil"
+            description="Longue durée, ponctuel ou urgence"
+            accent
+          />
+          <TuileNavigation
+            href="/planning"
+            icone="calendrier"
+            titre="Mon calendrier"
+            description="Mes besoins et mes réservations"
+          />
+          <TuileNavigation
+            href="/profil/parent"
+            icone="profil"
+            titre="Mon profil et mes enfants"
+            description={profilComplet ? undefined : "À compléter"}
+          />
+          <TuileNavigation
+            href="/reseau"
+            icone="reseau"
+            titre="Mon réseau de confiance"
+          />
+          <TuileNavigation href="/messages" icone="messages" titre="Mes messages" />
+        </div>
       )}
       {profile?.role === "professionnel" && (
-        <>
-          <Link
-            href="/profil/professionnel"
-            className="mt-6 self-center rounded-full bg-liams-orange px-6 py-3 font-medium text-white hover:opacity-90"
-          >
-            Compléter mon profil professionnel
-          </Link>
-          <Link
-            href={`/professionnels/${user.id}`}
-            className="mt-3 self-center text-sm text-liams-navy underline"
-          >
-            Voir mon profil public
-          </Link>
-          <Link href="/planning" className="mt-3 self-center text-sm text-liams-navy underline">
-            Mon planning
-          </Link>
+        <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
+          <TuileNavigation
+            href="/planning"
+            icone="calendrier"
+            titre="Mon planning"
+            description="Mes créneaux et les demandes reçues"
+            accent
+          />
           {/* Les fiches se cherchent avant une garde, souvent dans la hâte :
               autant qu'elles soient à un clic du tableau de bord. */}
-          <Link href="/fiches" className="mt-3 self-center text-sm text-liams-navy underline">
-            Les enfants que j&apos;accueille
-          </Link>
-        </>
+          <TuileNavigation
+            href="/fiches"
+            icone="fiches"
+            titre="Les enfants que j'accueille"
+            description="Fiches sanitaires et besoins particuliers"
+          />
+          <TuileNavigation
+            href="/profil/professionnel"
+            icone="profil"
+            titre="Mon profil"
+            description={profilComplet ? undefined : "À compléter"}
+          />
+          <TuileNavigation
+            href={`/professionnels/${user.id}`}
+            icone="vitrine"
+            titre="Mon profil public"
+            description="Ce que les parents voient"
+          />
+          <TuileNavigation
+            href="/reseau"
+            icone="reseau"
+            titre="Mon réseau de confiance"
+          />
+          <TuileNavigation href="/messages" icone="messages" titre="Mes messages" />
+        </div>
       )}
       {profile?.role === "admin" && (
-        <Link
-          href="/admin"
-          className="mt-6 self-center rounded-full bg-liams-navy px-6 py-3 font-medium text-white hover:opacity-90"
-        >
-          Tableau de bord admin
-        </Link>
-      )}
-      {profile?.role !== "admin" && (
-        <>
-          <Link href="/messages" className="mt-3 self-center text-sm text-liams-navy underline">
-            Mes mises en relation
-          </Link>
-          <Link href="/reseau" className="mt-3 self-center text-sm text-liams-navy underline">
-            Mon réseau de confiance
-          </Link>
-        </>
+        <div className="mt-8 grid gap-3 text-left sm:grid-cols-2">
+          <TuileNavigation
+            href="/admin"
+            icone="verification"
+            titre="Tableau de bord admin"
+            accent
+          />
+        </div>
       )}
       <form action="/deconnexion" method="post" className="mt-8">
         <button
