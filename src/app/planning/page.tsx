@@ -6,6 +6,7 @@ import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
 import { SupprimerCreneauButton } from "./SupprimerCreneauButton";
+import { CreneauxAVenir } from "./CreneauxAVenir";
 import { PlanningParent } from "./PlanningParent";
 import { DemandesRecues, type DemandeRecue } from "./DemandesRecues";
 import {
@@ -299,6 +300,25 @@ export default async function PlanningPage({
           )}
         />
       </section>
+
+      {/* Les créneaux passés ne se règlent plus : seuls ceux à venir sont
+          listés, et bornés à deux mois pour que la liste reste lisible. */}
+      <CreneauxAVenir
+        lieuAccueilProfil={profilPro?.lieu_accueil}
+        creneaux={(slots ?? [])
+          .filter((s) => s.date >= todayISO())
+          .slice(0, 60)
+          .map((s) => ({
+            id: s.id,
+            date: s.date,
+            heure_debut: s.heure_debut,
+            heure_fin: s.heure_fin,
+            capacite: s.capacite ?? 1,
+            types_accueil: s.types_accueil ?? ["ponctuel"],
+            lieu_accueil: s.lieu_accueil ?? null,
+            placesRestantes: restantesParSlot.get(s.id) ?? s.capacite ?? 1,
+          }))}
+      />
 
       <RecurrencesList
         recurrences={

@@ -476,6 +476,62 @@ export async function supprimerRecurrence(formData: FormData) {
   );
 }
 
+/** Modification d'un créneau isolé.
+ *
+ * Un créneau héritait des réglages du profil à sa création et n'était plus
+ * modifiable ensuite : il fallait le supprimer et le refaire, ce qui annulait
+ * au passage les gardes qu'il portait. */
+export async function modifierCreneau(
+  _prevState: PlanningFormState,
+  formData: FormData,
+): Promise<PlanningFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const slotId = String(formData.get("slot_id") ?? "");
+  if (!slotId) return { error: "Créneau introuvable." };
+
+  const capacite = Math.min(20, Math.max(1, Number(formData.get("capacite") ?? 1) || 1));
+  const typesSaisis = formData.getAll("types_accueil").map(String);
+  const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
+  const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
+
+  // Réduire la capacité en dessous des places déjà prises reviendrait à
+  // déloger une famille sans le lui dire.
+  const { data: restantes } = await supabase.rpc("places_restantes", {
+    p_slot_id: slotId,
+  });
+  const { data: creneau } = await supabase
+    .from("availability_slots")
+    .select("capacite")
+    .eq("id", slotId)
+    .eq("professional_id", user.id)
+    .maybeSingle();
+
+  if (!creneau) return { error: "Créneau introuvable." };
+
+  const prises = (creneau.capacite ?? 1) - (restantes ?? 0);
+  if (capacite < prises) {
+    return {
+      error: `${prises} place(s) sont déjà réservées sur ce créneau : la capacité ne peut pas descendre en dessous. Annulez d'abord la réservation concernée.`,
+    };
+  }
+
+  const { error } = await supabase
+    .from("availability_slots")
+    .update({
+      capacite,
+      types_accueil: typesAccueil,
+      lieu_accueil: lieuAccueil,
+    })
+    .eq("id", slotId)
+    .eq("professional_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/planning");
+  return { success: true };
+}
+
 /** Retrait d'un créneau, réservations comprises.
  *
  * Un créneau réservé pouvait auparavant être retiré sans que personne ne le
