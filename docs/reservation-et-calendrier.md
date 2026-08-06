@@ -193,8 +193,23 @@ affichée près du lit.
 > possibilité d'export » — et jamais « vos données ne peuvent pas être
 > copiées », qui serait faux et engagerait Liams.
 
-*À vérifier avant de construire : l'application affiche-t-elle déjà la fiche
-santé au professionnel quelque part ?*
+> **Vérification faite le 2026-08-05 : la réponse est non, et c'est un manque
+> actuel, pas futur.**
+>
+> `enfant_fiche_sante` et `enfant_profil_xtra` ne sont lus nulle part hormis
+> sur le profil du parent, là où il les remplit. Aucun écran ne les montre à un
+> professionnel — ni depuis le réseau, ni depuis une conversation, ni depuis le
+> planning.
+>
+> Depuis l'origine, les parents renseignent allergies, traitements, contacts
+> d'urgence et besoins particuliers, et **aucun professionnel ne peut les
+> consulter**. La règle de sécurité leur en donne le droit ; il n'existe pas de
+> page pour l'exercer.
+>
+> Sur une plateforme dédiée à l'accueil d'enfants en situation de handicap,
+> cela concerne **toutes les gardes**, pas seulement les urgences à venir. D'où
+> la recommandation de construire ce lot avant le parcours d'urgence : celui-ci
+> repose entièrement dessus, et donnerait sinon une clé sans porte.
 
 ---
 

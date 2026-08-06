@@ -84,12 +84,48 @@ export async function updateFicheSante(
     .single();
   if (!enfant) return { error: "Enfant introuvable." };
 
+  const texte = (champ: string) => String(formData.get(champ) ?? "").trim() || null;
+
+  /** Contacts saisis par rangs. Une ligne sans nom ni téléphone n'est pas un
+   * contact : on ne conserve pas de coquilles vides qui feraient croire à un
+   * recours inexistant. */
+  const contacts = (prefixe: string) =>
+    [0, 1]
+      .map((rang) => ({
+        nom: texte(`${prefixe}_nom_${rang}`),
+        lien: texte(`${prefixe}_lien_${rang}`),
+        telephone: texte(`${prefixe}_tel_${rang}`),
+      }))
+      .filter((c) => c.nom || c.telephone);
+
   const { error } = await supabase.from("enfant_fiche_sante").upsert({
     enfant_id: enfantId,
-    allergies: String(formData.get("allergies") ?? "").trim() || null,
-    traitements_en_cours: String(formData.get("traitements_en_cours") ?? "").trim() || null,
-    contact_medecin: String(formData.get("contact_medecin") ?? "").trim() || null,
-    contact_urgence: String(formData.get("contact_urgence") ?? "").trim() || null,
+    // Champs d'origine conservés : d'anciennes fiches les portent encore.
+    allergies: texte("allergies"),
+    traitements_en_cours: texte("traitements_en_cours"),
+    contact_medecin: texte("contact_medecin"),
+    contact_urgence: texte("contact_urgence"),
+
+    contacts_urgence: contacts("contact_urgence"),
+    personnes_autorisees: contacts("autorisee"),
+    medecin_nom: texte("medecin_nom"),
+    medecin_telephone: texte("medecin_telephone"),
+
+    allergies_alimentaires: texte("allergies_alimentaires"),
+    allergies_medicamenteuses: texte("allergies_medicamenteuses"),
+    allergies_autres: texte("allergies_autres"),
+    conduite_a_tenir_allergie: texte("conduite_a_tenir_allergie"),
+    antecedents_medicaux: texte("antecedents_medicaux"),
+    regime_alimentaire: texte("regime_alimentaire"),
+    appareillages: texte("appareillages"),
+    vaccins_a_jour: formData.get("vaccins_a_jour") === "on",
+
+    pai_existe: formData.get("pai_existe") === "on",
+    pai_objet: texte("pai_objet"),
+    pai_protocole_urgence: texte("pai_protocole_urgence"),
+
+    autorisation_soins_urgence: formData.get("autorisation_soins_urgence") === "on",
+    autorisation_soins_precisions: texte("autorisation_soins_precisions"),
   });
 
   if (error) return { error: error.message };

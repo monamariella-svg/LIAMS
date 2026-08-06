@@ -996,11 +996,15 @@ export async function confirmerReservationUrgente(formData: FormData) {
       supabase,
       booking.parent_id,
       "Créneau de garde d'urgence confirmé",
-      "<p>Le professionnel a confirmé votre créneau de garde d'urgence sur Liams.</p>",
+      `<p>Le professionnel a confirmé votre créneau de garde d'urgence.</p>
+       ${lienVers("/planning", "Voir mon calendrier")}`,
     );
   }
 
   revalidatePath("/planning");
+  // Une urgence se prépare dans l'heure qui suit : c'est maintenant qu'il faut
+  // lire la fiche de l'enfant, pas le jour venu.
+  redirect("/fiches?urgence_confirmee=1");
 }
 
 export async function refuserReservationUrgente(formData: FormData) {

@@ -163,6 +163,11 @@ export default async function TableauDeBordPage() {
           <Link href="/planning" className="mt-3 self-center text-sm text-liams-navy underline">
             Mon planning
           </Link>
+          {/* Les fiches se cherchent avant une garde, souvent dans la hâte :
+              autant qu'elles soient à un clic du tableau de bord. */}
+          <Link href="/fiches" className="mt-3 self-center text-sm text-liams-navy underline">
+            Les enfants que j&apos;accueille
+          </Link>
         </>
       )}
       {profile?.role === "admin" && (
