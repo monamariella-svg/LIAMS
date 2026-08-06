@@ -173,6 +173,9 @@ export async function demanderCreneaux(
       professional_id: professionalId,
       statut: "en_attente",
       enfant_ids: await enfantsRetenus(supabase, user.id, formData),
+      // Sans type déclaré, la demande vaut ponctuel : c'est le défaut de la
+      // colonne, et le cas d'un parent arrivé sans passer par l'orientation.
+      type_accueil: String(formData.get("type_accueil") ?? "") || "ponctuel",
     })
     .select("id")
     .single();

@@ -12,10 +12,12 @@ export default async function PlanningProfessionnelPage({
   searchParams,
 }: {
   params: Promise<{ professionalId: string }>;
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; type?: string }>;
 }) {
   const { professionalId } = await params;
-  const { week } = await searchParams;
+  const { week, type } = await searchParams;
+  const typeAccueil =
+    type === "longue_duree" || type === "ponctuel" ? type : undefined;
   const { supabase, user } = await requireUser("parent");
   const weekStart = startOfWeek(week || todayISO());
 
@@ -134,6 +136,12 @@ export default async function PlanningProfessionnelPage({
 
   const reservables: CreneauReservable[] = candidats
     .filter((slot) => (restantesParSlot.get(slot.id) ?? 0) > 0)
+    // Le parent cherche un type précis : un créneau qui ne le propose pas
+    // serait refusé en base, autant ne pas le montrer.
+    .filter(
+      (slot) =>
+        !typeAccueil || (slot.types_accueil ?? ["ponctuel"]).includes(typeAccueil),
+    )
     .filter((slot) => {
       // Un créneau d'urgence hors de sa fenêtre n'est pas commandable et ne le
       // sera peut-être jamais : l'afficher barré n'aide pas, il encombre.
@@ -193,6 +201,7 @@ export default async function PlanningProfessionnelPage({
         mesReservationIds={[...mesSlotIds]}
         reservables={reservables}
         enfants={enfants ?? []}
+        typeAccueil={typeAccueil}
       />
 
       <MesRecurrences

@@ -40,6 +40,7 @@ export function PlanningReservable({
   mesReservationIds,
   reservables,
   enfants,
+  typeAccueil,
 }: {
   professionalId: string;
   weekStart: string;
@@ -47,6 +48,8 @@ export function PlanningReservable({
   mesReservationIds: string[];
   reservables: CreneauReservable[];
   enfants: EnfantSelectionnable[];
+  /** Ce que le parent cherche. Suit la demande jusqu'au contrôle en base. */
+  typeAccueil?: string;
 }) {
   const [state, formAction, pending] = useActionState(demanderCreneaux, undefined);
   const demandables = reservables.filter((c) => c.demandable);
@@ -92,6 +95,7 @@ export function PlanningReservable({
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="professional_id" value={professionalId} />
+      {typeAccueil && <input type="hidden" name="type_accueil" value={typeAccueil} />}
       {coches.map((id) => (
         <input key={id} type="hidden" name="slot_ids" value={id} />
       ))}

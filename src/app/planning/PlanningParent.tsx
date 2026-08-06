@@ -39,6 +39,7 @@ export async function PlanningParent({
   userId,
   weekStart,
   enfantFiltre,
+  typeAccueil,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>;
@@ -46,6 +47,9 @@ export async function PlanningParent({
   weekStart: string;
   /** Identifiant de l'enfant dont on veut voir le seul planning. Absent : tous. */
   enfantFiltre?: string;
+  /** Ce que le parent cherche, choisi à la page d'orientation. Filtre les
+   * professionnels proposés et suivra la demande jusqu'au contrôle en base. */
+  typeAccueil?: "longue_duree" | "ponctuel";
 }) {
   const [
     { data: besoins },
@@ -319,7 +323,15 @@ export async function PlanningParent({
     liste.push(creneau);
     creneauxParPro.set(creneau.professional_id, liste);
   }
-  const candidats: ProfessionalCandidat[] = (professionnels ?? []).map((p) => ({
+  // Un professionnel qui n'accepte pas ce type d'accueil n'a pas à être
+  // proposé : sa demande serait de toute façon refusée en base, et il aurait
+  // fallu la décliner à la main.
+  const professionnelsRetenus = (professionnels ?? []).filter(
+    (p) =>
+      !typeAccueil || (p.types_accueil ?? ["ponctuel"]).includes(typeAccueil),
+  );
+
+  const candidats: ProfessionalCandidat[] = professionnelsRetenus.map((p) => ({
     user_id: p.user_id,
     slots: creneauxParPro.get(p.user_id) ?? [],
     latitude: p.latitude,
@@ -329,7 +341,7 @@ export async function PlanningParent({
     note_moyenne: p.note_moyenne,
     badges: (p.professional_badges ?? []).map((b: { badge_code: string }) => b.badge_code),
   }));
-  const profilsParId = new Map((professionnels ?? []).map((p) => [p.user_id, p]));
+  const profilsParId = new Map(professionnelsRetenus.map((p) => [p.user_id, p]));
   const labelsBadges = new Map<string, string>(
     (badgesCatalogue ?? []).map((b) => [b.code, b.label]),
   );
@@ -480,7 +492,9 @@ export async function PlanningParent({
           </Link>
           {statutReseau === "accepte" ? (
             <Link
-              href={`/reseau/${professionalId}`}
+              // Le type suit le parent jusqu'à la demande : c'est lui qui sera
+              // confronté aux types du créneau au moment d'enregistrer.
+              href={`/reseau/${professionalId}${typeAccueil ? `?type=${typeAccueil}` : ""}`}
               className="rounded-full bg-liams-teal px-3 py-1 text-xs font-medium text-white hover:opacity-90"
             >
               Réserver ses créneaux

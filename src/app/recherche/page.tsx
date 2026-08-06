@@ -34,17 +34,27 @@ export default async function RecherchePage() {
         </p>
       </div>
 
+      {/* Trois portes plutôt que deux : le type doit être connu pour filtrer
+          les propositions et pour que la demande soit acceptée. Le demander
+          ici, au moment le plus clair, vaut mieux que l'enfouir dans un
+          formulaire au milieu du calendrier. */}
       <Choix
-        href="/planning"
-        titre="Accueil longue durée ou ponctuel"
-        description="Un contrat sur plusieurs mois, quelques matinées par semaine, ou une garde d'un soir. Vous déclarez vos besoins, nous vous proposons les professionnels qui y répondent."
+        href="/planning?type=longue_duree"
+        titre="Accueil longue durée"
+        description="Un engagement dans la durée avec un professionnel : un contrat de plusieurs mois à plusieurs années — le CDI d'une assistante maternelle, par exemple. C'est le mode de garde classique."
         principal
+      />
+
+      <Choix
+        href="/planning?type=ponctuel"
+        titre="Accueil ponctuel"
+        description="Quelques heures, un soir, une journée, ou deux semaines de remplacement. Réservez créneau par créneau, sans engagement de durée."
       />
 
       <Choix
         href="/recherche/urgence"
         titre="Accueil d'urgence"
-        description="Une garde imprévue, dans les heures qui viennent. Les professionnels dont un créneau d'urgence est ouvert vous sont proposés, ceux de votre réseau en premier."
+        description="Une garde imprévue, dans les heures qui viennent — entre 20 h et 2 h avant son début. Les professionnels dont un créneau est ouvert vous sont proposés, ceux de votre réseau en premier."
       />
 
       {dejaDesBesoins && (
