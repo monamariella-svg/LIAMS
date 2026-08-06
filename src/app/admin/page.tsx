@@ -74,9 +74,14 @@ export default async function AdminDashboardPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-liams-navy">Tableau de bord admin</h1>
-        <Link href="/admin/professionnels" className="text-sm text-liams-navy underline">
-          Vérification des professionnels
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/admin/professionnels" className="text-sm text-liams-navy underline">
+            Vérification des professionnels
+          </Link>
+          <Link href="/admin/historique" className="text-sm text-liams-navy underline">
+            Historique des réservations
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

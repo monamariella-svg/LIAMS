@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
+import { journaliser } from "@/lib/journal";
 import { disponibiliteCreneau } from "@/lib/urgence";
 
 export type ReseauFormState = { error?: string; success?: boolean } | undefined;
@@ -71,6 +72,19 @@ export async function annulerReservation(formData: FormData) {
   } else {
     await supabase.from(table).update({ statut: "annule" }).eq("id", reservationId);
   }
+
+  await journaliser(supabase, {
+    type: restants.length > 0 ? "retrait_enfant" : "annulation_parent",
+    acteurId: user.id,
+    parentId: user.id,
+    professionalId: reservation.professional_id,
+    detail: {
+      reservation: type,
+      reservation_id: reservationId,
+      enfant_retire: enfantRetire || null,
+      enfants_restants: restants,
+    },
+  });
 
   await notifierUtilisateur(
     supabase,

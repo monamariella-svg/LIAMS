@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
+import { journaliser } from "@/lib/journal";
 import { geocodeAdresse } from "@/lib/geocoding";
 import { computeRecurringDates, parseISODate } from "@/lib/calendar";
 
@@ -442,6 +443,20 @@ export async function supprimerRecurrence(formData: FormData) {
   // une série de plusieurs mois produirait autrement des dizaines de messages
   // qu'on cesserait de lire au troisième.
   for (const [parentId, parEnfant] of parents) {
+    await journaliser(supabase, {
+      type: "annulation_pro_serie",
+      acteurId: user.id,
+      parentId,
+      professionalId: user.id,
+      detail: {
+        recurrence_id: recurrenceId,
+        portee,
+        motif,
+        jours_annules: [...parEnfant.values()].flatMap((s) => [...s]).filter(Boolean),
+        enfants: [...parEnfant.keys()],
+      },
+    });
+
     const blocs = [...parEnfant.entries()]
       .map(([enfantId, jours]) => {
         const prenom = prenomParId.get(enfantId);
@@ -633,6 +648,19 @@ export async function supprimerCreneau(formData: FormData) {
   const prenomParId = new Map((enfants ?? []).map((e) => [e.id, e.prenom]));
 
   for (const [parentId, enfantIds] of parents) {
+    await journaliser(supabase, {
+      type: "annulation_pro_creneau",
+      acteurId: user.id,
+      parentId,
+      professionalId: user.id,
+      detail: {
+        creneau: quand,
+        slot_id: slotId,
+        motif: motif || null,
+        enfants: [...enfantIds],
+      },
+    });
+
     const prenoms = [...enfantIds]
       .map((id) => prenomParId.get(id))
       .filter(Boolean) as string[];
@@ -968,6 +996,19 @@ export async function traiterDemandeCreneaux(formData: FormData) {
   }
 
   await supabase.from("demandes_creneaux").update({ statut: "traitee" }).eq("id", demandeId);
+
+  await journaliser(supabase, {
+    type: "creneaux_valides",
+    acteurId: user.id,
+    parentId: demande.parent_id,
+    professionalId: user.id,
+    detail: {
+      demande_id: demandeId,
+      acceptes: nbAcceptes,
+      proposes: (lignes ?? []).length,
+      enfants: demande.enfant_ids ?? [],
+    },
+  });
 
   await notifierUtilisateur(
     supabase,

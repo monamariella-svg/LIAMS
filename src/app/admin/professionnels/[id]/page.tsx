@@ -36,6 +36,7 @@ export default async function AdminProfessionnelPage({
     { data: qualification },
     { data: badges },
     { data: badgesAttribues },
+    { data: lectures },
     { data: identite },
     { data: compte },
     { data: coordonnees },
@@ -48,6 +49,11 @@ export default async function AdminProfessionnelPage({
       .from("professional_badges")
       .select("badge_code, statut, demande_le")
       .eq("professional_id", id),
+    supabase
+      .from("lectures_fiches")
+      .select("lu_le, enfants(prenom)")
+      .eq("professional_id", id)
+      .order("lu_le", { ascending: false }),
     supabase.from("identites").select("prenom, nom").eq("user_id", id).maybeSingle(),
     supabase.from("users").select("email").eq("id", id).maybeSingle(),
     supabase.from("coordonnees").select("telephone").eq("user_id", id).maybeSingle(),
@@ -154,6 +160,41 @@ export default async function AdminProfessionnelPage({
           </>
         ) : (
           <p className="mt-2 text-sm text-gray-500">Ce professionnel n&apos;a pas déclaré de qualification Xtras.</p>
+        )}
+      </section>
+
+      {/* Trace de ce qui a été porté à la connaissance du professionnel :
+          c'est ce qu'on cherchera le jour où un incident sera examiné. */}
+      <section className="rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-liams-navy">
+          Fiches sanitaires consultées
+        </h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Confirmations de lecture. Une confirmation se périme si la famille
+          modifie la fiche : le professionnel doit alors la relire.
+        </p>
+        {(lectures ?? []).length === 0 ? (
+          <p className="mt-3 text-sm text-gray-500">Aucune fiche confirmée lue.</p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-1 text-sm">
+            {(lectures ?? []).map((l, i) => (
+              <li key={i} className="flex justify-between border-b border-gray-100 py-1">
+                <span>
+                  {(l.enfants as unknown as { prenom: string } | null)?.prenom ??
+                    "Enfant supprimé"}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {new Date(l.lu_le).toLocaleString("fr-FR", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
