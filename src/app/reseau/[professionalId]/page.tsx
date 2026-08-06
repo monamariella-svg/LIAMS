@@ -142,18 +142,20 @@ export default async function PlanningProfessionnelPage({
       (slot) =>
         !typeAccueil || (slot.types_accueil ?? ["ponctuel"]).includes(typeAccueil),
     )
+    // On ne montre que ce qui est commandable maintenant : un créneau barré
+    // d'un motif alourdit la liste sans rien apporter.
+    //
+    // La fenêtre d'urgence ne s'applique qu'aux créneaux réservés à l'urgence.
+    // Un créneau qui sert aussi au ponctuel reste commandable à ce titre, quel
+    // que soit le délai — d'où la lecture des types plutôt que du statut, ce
+    // dernier étant hérité et trompeur sur les créneaux d'avant la capacité.
     .filter((slot) => {
-      // Un créneau d'urgence hors de sa fenêtre n'est pas commandable et ne le
-      // sera peut-être jamais : l'afficher barré n'aide pas, il encombre.
-      // Ceux qui sont dans la fenêtre restent, ce sont les seuls utiles.
-      const estUrgence =
-        slot.statut === "libre_urgence" ||
-        (slot.types_accueil ?? []).includes("urgence");
-      const seulementUrgence =
-        estUrgence &&
-        !(slot.types_accueil ?? ["ponctuel"]).some((t: string) => t !== "urgence");
-      if (!seulementUrgence) return true;
-      return disponibiliteCreneau(slot, maintenant).demandable;
+      const types = (slot.types_accueil ?? ["ponctuel"]) as string[];
+      const urgenceSeule = types.length === 1 && types[0] === "urgence";
+      return disponibiliteCreneau(
+        { ...slot, statut: urgenceSeule ? "libre_urgence" : "libre" },
+        maintenant,
+      ).demandable;
     })
     .map((slot) => {
       const { demandable, raison } = disponibiliteCreneau(slot, maintenant);

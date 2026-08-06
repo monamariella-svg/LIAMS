@@ -79,14 +79,41 @@ export async function demanderGardeUrgente(
     ]),
   );
 
-  const possibles = retenus.filter(
-    (s) => (restantesParSlot.get(s.id) ?? 0) >= enfants.length,
-  );
+  // Les places déjà demandées par cette famille et pas encore tranchées.
+  //
+  // Le décompte en base ne compte que les demandes confirmées — à raison : une
+  // demande en attente ne doit pas bloquer une place pour les autres familles,
+  // le professionnel pouvant la refuser. Mais elle doit bloquer celle-ci :
+  // sans quoi un parent de deux enfants demande deux fois la même place, en
+  // deux temps, et le professionnel reçoit deux demandes pour une place.
+  const { data: enAttente } = await supabase
+    .from("urgent_bookings")
+    .select("slot_id, enfant_ids")
+    .eq("parent_id", user.id)
+    .in("slot_id", retenus.map((s) => s.id))
+    .eq("statut", "en_attente");
+
+  const dejaDemandeesParSlot = new Map<string, number>();
+  for (const d of enAttente ?? []) {
+    dejaDemandeesParSlot.set(
+      d.slot_id,
+      (dejaDemandeesParSlot.get(d.slot_id) ?? 0) +
+        Math.max(1, d.enfant_ids?.length ?? 0),
+    );
+  }
+
+  const possibles = retenus.filter((s) => {
+    const restantes = restantesParSlot.get(s.id) ?? 0;
+    const deja = dejaDemandeesParSlot.get(s.id) ?? 0;
+    return restantes - deja >= enfants.length;
+  });
 
   if (possibles.length === 0) {
+    const dejaDemande = dejaDemandeesParSlot.size > 0;
     return {
-      error:
-        "Il ne reste plus assez de places sur ces créneaux pour le nombre d'enfants choisi.",
+      error: dejaDemande
+        ? "Vous avez déjà demandé ces créneaux — attendez la réponse du professionnel avant d'en demander davantage."
+        : "Il ne reste plus assez de places sur ces créneaux pour le nombre d'enfants choisi.",
     };
   }
 

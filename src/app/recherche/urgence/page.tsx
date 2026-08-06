@@ -69,6 +69,20 @@ export default async function RechercheUrgencePage() {
   );
 
   const disponibles = ouverts.filter((s) => (restantesParSlot.get(s.id) ?? 0) > 0);
+
+  // Demandes d'autres familles déjà en attente : la seconde doit le savoir
+  // avant de demander, plutôt que de découvrir un refus le soir même.
+  const { data: enAttente } = disponibles.length
+    ? await supabase.rpc("demandes_en_attente_creneaux", {
+        p_slot_ids: disponibles.map((s) => s.id),
+      })
+    : { data: [] };
+  const enAttenteParSlot = new Map(
+    ((enAttente ?? []) as { slot_id: string; en_attente: number }[]).map((r) => [
+      r.slot_id,
+      r.en_attente,
+    ]),
+  );
   const idsPros = [...new Set(disponibles.map((s) => s.professional_id))];
 
   const [{ data: profils }, { data: identites }] = await Promise.all([
@@ -141,6 +155,7 @@ export default async function RechercheUrgencePage() {
             heure_fin: s.heure_fin,
             lieu_accueil: s.lieu_accueil ?? null,
             placesRestantes: restantesParSlot.get(s.id) ?? 0,
+            demandesEnAttente: enAttenteParSlot.get(s.id) ?? 0,
           })),
       };
     })

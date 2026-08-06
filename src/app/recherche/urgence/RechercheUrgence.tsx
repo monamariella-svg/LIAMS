@@ -15,6 +15,8 @@ export type CreneauUrgence = {
   heure_fin: string;
   lieu_accueil: string | null;
   placesRestantes: number;
+  /** Demandes d'autres familles déjà en attente sur ce créneau. */
+  demandesEnAttente: number;
 };
 
 export type ProfessionnelUrgence = {
@@ -168,6 +170,15 @@ export function RechercheUrgence({
                     1 place restante
                   </span>
                 )}
+                {/* Ne dit ni qui a demandé, ni pour quel enfant : seulement
+                    qu'il faudra peut-être une autre solution. */}
+                {creneau.demandesEnAttente > 0 && (
+                  <span className="rounded-full bg-liams-orange/10 px-2 py-0.5 text-xs text-liams-orange">
+                    {creneau.demandesEnAttente > 1
+                      ? `${creneau.demandesEnAttente} autres familles l'ont déjà demandé`
+                      : "Une autre famille l'a déjà demandé"}
+                  </span>
+                )}
               </label>
             ))}
           </div>
@@ -179,23 +190,37 @@ export function RechercheUrgence({
       </div>
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-      {state?.success && (
-        <p className="rounded-lg bg-liams-teal/10 px-4 py-3 text-sm text-liams-teal">
-          {state.message}
-        </p>
-      )}
 
-      <button
-        type="submit"
-        disabled={pending || coches.length === 0}
-        className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
-        {pending
-          ? "Envoi..."
-          : coches.length === 0
-            ? "Choisissez un créneau"
-            : `Demander ${coches.length} créneau(x)`}
-      </button>
+      {state?.success ? (
+        <div className="rounded-xl bg-liams-teal/10 p-5">
+          <p className="text-sm font-medium text-liams-teal">{state.message}</p>
+          <p className="mt-2 text-sm text-gray-600">
+            Vous pouvez demander d&apos;autres créneaux — par précaution si une
+            autre famille convoitait la même place, ou pour un second enfant.
+          </p>
+          {/* Rechargement complet plutôt qu'un lien : la liste affiche encore
+              la place qui vient d'être prise, et le formulaire garde son
+              message de succès. Repartir de zéro est ici le plus juste. */}
+          <a
+            href="/recherche/urgence"
+            className="mt-4 inline-block rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90"
+          >
+            Nouvelle demande
+          </a>
+        </div>
+      ) : (
+        <button
+          type="submit"
+          disabled={pending || coches.length === 0}
+          className="self-start rounded-full bg-liams-orange px-6 py-3 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {pending
+            ? "Envoi..."
+            : coches.length === 0
+              ? "Choisissez un créneau"
+              : `Demander ${coches.length} créneau(x)`}
+        </button>
+      )}
     </form>
   );
 }

@@ -25,10 +25,12 @@ export default async function PlanningPage({
     annule?: string;
     enfant?: string;
     type?: string;
+    tri?: string;
+    depuis?: string;
   }>;
 }) {
   const { supabase, user, role } = await requireUserParmi(["professionnel", "parent"]);
-  const { week, annule, enfant, type } = await searchParams;
+  const { week, annule, enfant, type, tri, depuis } = await searchParams;
   const weekStart = startOfWeek(week || todayISO());
 
   if (role === "parent") {
@@ -39,6 +41,10 @@ export default async function PlanningPage({
         weekStart={weekStart}
         enfantFiltre={enfant}
         typeAccueil={type === "longue_duree" || type === "ponctuel" ? type : undefined}
+        tri={
+          tri === "prix" || tri === "note" || tri === "trajet" ? tri : "distance"
+        }
+        depuisPro={depuis}
       />
     );
   }
@@ -86,6 +92,32 @@ export default async function PlanningPage({
   ]);
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
+
+  // Une demande de garde sans nom ni prénom d'enfant ne se décide pas : le
+  // professionnel doit savoir qui il accueillerait avant d'accepter.
+  const idsParents = [...new Set((urgentBookings ?? []).map((b) => b.parent_id))];
+  const idsEnfantsDemandes = [
+    ...new Set((urgentBookings ?? []).flatMap((b) => (b.enfant_ids ?? []) as string[])),
+  ];
+
+  const [{ data: identitesParents }, { data: enfantsDemandes }] = await Promise.all([
+    idsParents.length
+      ? supabase.from("identites").select("user_id, prenom, nom").in("user_id", idsParents)
+      : Promise.resolve({ data: [] }),
+    idsEnfantsDemandes.length
+      ? supabase.from("enfants").select("id, prenom").in("id", idsEnfantsDemandes)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const nomParParent = new Map(
+    (identitesParents ?? []).map((i) => [
+      i.user_id,
+      [i.prenom, i.nom].filter(Boolean).join(" ") || "Parent",
+    ]),
+  );
+  const prenomParEnfant = new Map(
+    (enfantsDemandes ?? []).map((e) => [e.id, e.prenom]),
+  );
 
   // Le professionnel doit voir ce qu'il lui reste, pas seulement s'il est pris :
   // un créneau de deux places dont une est réservée reste ouvert, et il doit le
@@ -145,8 +177,22 @@ export default async function PlanningPage({
               const slot = slotsParId.get(booking.slot_id);
               return (
                 <div key={booking.id} className="flex items-center justify-between rounded-lg bg-white px-4 py-2 text-sm">
-                  <span>
-                    {slot ? `${slot.date} ${slot.heure_debut}–${slot.heure_fin}` : "Créneau"}
+                  <span className="flex flex-col">
+                    <span className="font-medium text-liams-navy">
+                      {nomParParent.get(booking.parent_id) ?? "Parent"}
+                      {((booking.enfant_ids ?? []) as string[]).length > 0 && (
+                        <span className="ml-2 font-normal text-gray-600">
+                          pour{" "}
+                          {((booking.enfant_ids ?? []) as string[])
+                            .map((id) => prenomParEnfant.get(id))
+                            .filter(Boolean)
+                            .join(", ")}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {slot ? `${slot.date} ${slot.heure_debut}–${slot.heure_fin}` : "Créneau"}
+                    </span>
                   </span>
                   <div className="flex gap-2">
                     <form action={confirmerReservationUrgente}>

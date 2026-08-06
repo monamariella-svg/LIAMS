@@ -11,6 +11,7 @@ import {
   type CreneauCalendrier,
   type CritereRecherche,
 } from "@/lib/matching";
+import { distanceKm } from "@/lib/geo";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { PhotoProfil } from "@/components/PhotoProfil";
 import { BadgeIcone } from "@/components/BadgeIcone";
@@ -40,6 +41,8 @@ export async function PlanningParent({
   weekStart,
   enfantFiltre,
   typeAccueil,
+  tri = "distance",
+  depuisPro,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>;
@@ -50,6 +53,12 @@ export async function PlanningParent({
   /** Ce que le parent cherche, choisi à la page d'orientation. Filtre les
    * professionnels proposés et suivra la demande jusqu'au contrôle en base. */
   typeAccueil?: "longue_duree" | "ponctuel";
+  /** Critère de classement du catalogue. Le réseau passe devant quoi qu'il en
+   * soit. */
+  tri?: "distance" | "prix" | "note" | "trajet";
+  /** Professionnel déjà retenu pour un premier enfant : les autres sont alors
+   * classés par leur distance à celui-là. */
+  depuisPro?: string;
 }) {
   const [
     { data: besoins },
@@ -63,6 +72,7 @@ export async function PlanningParent({
     { data: badgesCatalogue },
     { data: photos },
     { data: demandes },
+    { data: identitesPros },
   ] = await Promise.all([
     supabase
       .from("besoins_garde")
@@ -104,7 +114,18 @@ export async function PlanningParent({
       .select("id, professional_id, statut, enfant_ids")
       .eq("parent_id", userId)
       .in("statut", ["en_attente", "traitee"]),
+    supabase.from("identites").select("user_id, prenom, nom"),
   ]);
+
+  // Les cartes n'affichaient que le tarif et la distance : un parent comparait
+  // des inconnus. L'identité d'un professionnel est lisible de tout compte
+  // connecté, il n'y a aucune raison de la taire ici.
+  const nomParPro = new Map(
+    (identitesPros ?? []).map((i) => [
+      i.user_id,
+      [i.prenom, i.nom].filter(Boolean).join(" ") || "Professionnel",
+    ]),
+  );
 
   // Créneaux issus des demandes groupées : proposés (en attente) ou acceptés.
   // Requête séparée plutôt qu'un filtre sur table jointe, plus lisible côté
@@ -429,10 +450,62 @@ export async function PlanningParent({
   // Catalogue complet filtré par les seuls critères du parent (sans contrainte
   // de date) : permet d'explorer les profils même sans besoin déclaré.
   const catalogue = matchProfessionnels(candidats, criteresParent);
-  const catalogueTrie = [
-    ...catalogue.filter((m) => reseauStatuts.get(m.candidat.user_id) === "accepte"),
-    ...catalogue.filter((m) => reseauStatuts.get(m.candidat.user_id) !== "accepte"),
-  ];
+
+  /** Distance depuis un professionnel déjà retenu, plutôt que depuis le
+   * domicile.
+   *
+   * Un parent qui place deux enfants chez deux personnes ne se soucie pas
+   * d'abord de leur distance à chez lui : c'est lui qui fera le trajet de
+   * l'une à l'autre, deux fois par jour. */
+  const profilDepuis = depuisPro ? profilsParId.get(depuisPro) : null;
+  const origineDepuis =
+    profilDepuis?.latitude != null && profilDepuis?.longitude != null
+      ? { latitude: profilDepuis.latitude, longitude: profilDepuis.longitude }
+      : null;
+
+  const distanceDepuis = (userId: string): number | null => {
+    if (!origineDepuis) return null;
+    const p = profilsParId.get(userId);
+    if (p?.latitude == null || p?.longitude == null) return null;
+    return Math.round(distanceKm(origineDepuis, { latitude: p.latitude, longitude: p.longitude }) * 10) / 10;
+  };
+
+  const valeurTri = (m: (typeof catalogue)[number]): number => {
+    const p = profilsParId.get(m.candidat.user_id);
+    switch (tri) {
+      case "prix":
+        // Sans tarif déclaré, on renvoie en fin de liste plutôt qu'en tête :
+        // un profil incomplet ne doit pas paraître le moins cher.
+        return p?.tarif_horaire ?? Number.POSITIVE_INFINITY;
+      case "note":
+        return -(m.candidat.note_moyenne ?? -1);
+      case "trajet":
+        return distanceDepuis(m.candidat.user_id) ?? Number.POSITIVE_INFINITY;
+      default:
+        return m.distanceKm ?? Number.POSITIVE_INFINITY;
+    }
+  };
+
+  // Le réseau reste en tête quel que soit le tri : un professionnel qu'on
+  // connaît déjà passe avant un inconnu moins cher.
+  const parReseau = (m: (typeof catalogue)[number]) =>
+    reseauStatuts.get(m.candidat.user_id) === "accepte" ? 0 : 1;
+
+  const catalogueTrie = [...catalogue].sort(
+    (a, b) => parReseau(a) - parReseau(b) || valeurTri(a) - valeurTri(b),
+  );
+
+  /** Lien de tri conservant les autres filtres : changer le classement ne doit
+   * pas faire perdre l'enfant sélectionné ni le type d'accueil cherché. */
+  const lienTri = (nouveauTri: string, depuis: string | null = depuisPro ?? null) => {
+    const params = new URLSearchParams();
+    if (nouveauTri !== "distance") params.set("tri", nouveauTri);
+    if (depuis) params.set("depuis", depuis);
+    if (enfantFiltre) params.set("enfant", enfantFiltre);
+    if (typeAccueil) params.set("type", typeAccueil);
+    const suite = params.toString();
+    return suite ? `/planning?${suite}` : "/planning";
+  };
 
   const aucunBesoin = (besoins ?? []).length === 0 && (besoinRecurrences ?? []).length === 0;
 
@@ -457,6 +530,9 @@ export async function PlanningParent({
             </span>
           )}
           <span className="font-medium text-liams-navy">
+            {nomParPro.get(professionalId) ?? "Professionnel"}
+          </span>
+          <span className="text-sm text-gray-600">
             {profil?.tarif_horaire ? `${profil.tarif_horaire} €/h` : "Tarif non renseigné"}
             {distanceKm !== null && ` — ${distanceKm.toFixed(1)} km`}
           </span>
@@ -661,11 +737,51 @@ export async function PlanningParent({
             distance ou de retirer un accompagnement souhaité.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {catalogueTrie.map((m) =>
-              carteProfessionnel(m.candidat.user_id, m.distanceKm, m.candidat.note_moyenne),
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500">Classer par</span>
+              {[
+                { cle: "distance", label: "Distance de chez moi" },
+                { cle: "prix", label: "Prix" },
+                { cle: "note", label: "Note" },
+              ].map((option) => (
+                <Link
+                  key={option.cle}
+                  href={lienTri(option.cle)}
+                  className={`rounded-full px-3 py-1 text-xs ${
+                    tri === option.cle
+                      ? "bg-liams-navy text-white"
+                      : "border border-gray-300 text-gray-600 hover:border-liams-navy"
+                  }`}
+                >
+                  {option.label}
+                </Link>
+              ))}
+            </div>
+
+            {/* Le tri par trajet n'a de sens qu'une fois un premier
+                professionnel retenu : c'est de lui qu'on mesure la distance. */}
+            {depuisPro && (
+              <p className="mb-3 rounded-lg bg-liams-teal/5 px-3 py-2 text-xs text-liams-navy">
+                Distances mesurées depuis{" "}
+                <strong>{nomParPro.get(depuisPro) ?? "le professionnel retenu"}</strong>{" "}
+                — pratique si vous placez un second enfant ailleurs.{" "}
+                <Link href={lienTri(tri, null)} className="underline">
+                  revenir aux distances depuis chez moi
+                </Link>
+              </p>
             )}
-          </div>
+
+            <div className="flex flex-col gap-2">
+              {catalogueTrie.map((m) =>
+                carteProfessionnel(
+                  m.candidat.user_id,
+                  depuisPro ? distanceDepuis(m.candidat.user_id) : m.distanceKm,
+                  m.candidat.note_moyenne,
+                ),
+              )}
+            </div>
+          </>
         )}
       </details>
 
