@@ -1,4 +1,5 @@
-import { requireUser } from "@/lib/auth";
+import Link from "next/link";
+import { compteProfessionnelActif, requireUser } from "@/lib/auth";
 import { computeProfessionalProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
 import { BarreProgression } from "@/components/BarreProgression";
@@ -15,6 +16,51 @@ import type { DocumentType } from "./actions";
 
 export default async function ProfilProfessionnelPage() {
   const { supabase, user } = await requireUser("professionnel");
+  const { estTitulaire } = await compteProfessionnelActif(supabase, user.id);
+
+  // Un compte secondaire d'établissement n'a pas de profil à lui : le tarif,
+  // les documents, les badges et la vitrine appartiennent à la structure et
+  // sont tenus par le compte principal — la 0030 le lui refuse en base. Lui
+  // afficher ces formulaires ne produirait que des refus incompréhensibles.
+  // Reste son identité, qui est bien la sienne.
+  if (!estTitulaire) {
+    const [{ data: identitePerso }, { data: coordonneesPerso }] = await Promise.all([
+      supabase.from("identites").select("prenom, nom").eq("user_id", user.id).maybeSingle(),
+      supabase.from("coordonnees").select("telephone").eq("user_id", user.id).maybeSingle(),
+    ]);
+
+    return (
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+        <h1 className="text-2xl font-semibold text-liams-navy">Mon profil</h1>
+
+        <IdentiteForm
+          prenom={identitePerso?.prenom ?? null}
+          nom={identitePerso?.nom ?? null}
+          telephone={coordonneesPerso?.telephone ?? null}
+        />
+
+        <section className="rounded-xl border border-gray-200 bg-gray-50 p-6">
+          <h2 className="text-base font-semibold text-liams-navy">
+            Vous travaillez au nom d&apos;un établissement
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Le tarif, l&apos;adresse, les documents et l&apos;agrément sont ceux
+            de la structure : c&apos;est le compte principal qui les tient. Votre
+            planning, vos échanges avec les familles et les fiches des enfants
+            que vous accueillez sont dans les écrans habituels.
+          </p>
+          <Link
+            href="/profil/etablissement"
+            className="mt-4 inline-block text-sm text-liams-teal underline"
+          >
+            Voir l&apos;établissement auquel je suis rattaché
+          </Link>
+        </section>
+
+        <NavigationBas />
+      </div>
+    );
+  }
 
   const [
     { data: profile },
@@ -27,6 +73,7 @@ export default async function ProfilProfessionnelPage() {
     { data: coordonnees },
     { data: badges },
     { data: badgesAttribues },
+    { data: ficheEtablissement },
   ] = await Promise.all([
       supabase.from("professional_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase
@@ -69,7 +116,18 @@ export default async function ProfilProfessionnelPage() {
         .from("professional_badges")
         .select("badge_code, statut")
         .eq("professional_id", user.id),
+      supabase
+        .from("etablissements")
+        .select("professional_id")
+        .eq("professional_id", user.id)
+        .maybeSingle(),
     ]);
+
+  // Le drapeau de l'inscription répond tant que la fiche n'existe pas ; la
+  // fiche répond ensuite, y compris pour un compte devenu établissement après
+  // coup.
+  const estEtablissement =
+    Boolean(user.user_metadata?.est_etablissement) || ficheEtablissement !== null;
 
   const badgesSimples = (badges ?? []).filter((b) => b.mode === "auto_declare");
   const badgesSpecialites = (badges ?? []).filter((b) => b.mode === "sur_validation");
@@ -100,6 +158,7 @@ export default async function ProfilProfessionnelPage() {
         prenom={identite?.prenom ?? null}
         nom={identite?.nom ?? null}
         telephone={coordonnees?.telephone ?? null}
+        estEtablissement={estEtablissement}
       />
 
       <BarreProgression pourcentage={pourcentage} manquants={manquants} />
@@ -115,6 +174,45 @@ export default async function ProfilProfessionnelPage() {
         lieuAccueil={profile?.lieu_accueil ?? "chez_le_pro"}
         typesAccueil={profile?.types_accueil ?? ["ponctuel"]}
       />
+
+      {/* Discret pour un indépendant, à qui cette page ne s'adresse pas ; mis
+          en avant pour qui s'est inscrit comme établissement et n'a pas encore
+          rempli sa fiche — sans elle, il ne peut ni prouver son agrément ni
+          rattacher son équipe. */}
+      {estEtablissement && !ficheEtablissement ? (
+        <section className="rounded-xl border-2 border-liams-teal/30 bg-liams-teal/5 p-6">
+          <h2 className="text-base font-semibold text-liams-navy">
+            Complétez la fiche de votre établissement
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Numéro d&apos;agrément, SIRET, représentant légal : c&apos;est ce qui
+            permet à une famille de vérifier la structure à qui elle confie son
+            enfant. Vous pourrez ensuite rattacher les comptes de votre équipe.
+          </p>
+          <Link
+            href="/profil/etablissement"
+            className="mt-4 inline-block rounded-full bg-liams-teal px-6 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Remplir la fiche
+          </Link>
+        </section>
+      ) : (
+        <p className="text-sm text-gray-500">
+          {ficheEtablissement ? (
+            <Link href="/profil/etablissement" className="text-liams-teal underline">
+              La fiche de mon établissement et les comptes de mon équipe
+            </Link>
+          ) : (
+            <>
+              Vous inscrivez une crèche, une micro-crèche ou une halte-garderie ?{" "}
+              <Link href="/profil/etablissement" className="text-liams-teal underline">
+                Déclarez l&apos;établissement et rattachez les comptes de votre équipe
+              </Link>
+              .
+            </>
+          )}
+        </p>
+      )}
 
       <section className="rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-liams-navy">Mes compétences</h2>

@@ -19,7 +19,25 @@ export async function enregistrerIdentite(
   const nom = String(formData.get("nom") ?? "").trim();
   const telephoneSaisi = String(formData.get("telephone") ?? "").trim();
 
-  if (!prenom || !nom) {
+  // Un établissement n'a qu'un nom — sa raison sociale. Le drapeau posé à
+  // l'inscription répond avant que la fiche existe ; la fiche répond ensuite,
+  // y compris pour un compte qui serait devenu un établissement après coup.
+  const { data: fiche } = await supabase
+    .from("etablissements")
+    .select("professional_id")
+    .eq("professional_id", user.id)
+    .maybeSingle();
+  const estEtablissement =
+    Boolean(user.user_metadata?.est_etablissement) || fiche !== null;
+
+  if (!nom) {
+    return {
+      error: estEtablissement
+        ? "Le nom de l'établissement est requis."
+        : "Prénom et nom requis.",
+    };
+  }
+  if (!estEtablissement && !prenom) {
     return { error: "Prénom et nom requis." };
   }
 
@@ -39,7 +57,7 @@ export async function enregistrerIdentite(
 
   const { error } = await supabase
     .from("identites")
-    .upsert({ user_id: user.id, prenom, nom }, { onConflict: "user_id" });
+    .upsert({ user_id: user.id, prenom: prenom || null, nom }, { onConflict: "user_id" });
 
   if (error) return { error: error.message };
 

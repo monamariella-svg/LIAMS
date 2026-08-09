@@ -1,14 +1,23 @@
 "use client";
 
-import { Suspense, useActionState } from "react";
+import { Suspense, useActionState, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signUp } from "./actions";
 
+const PROFILS = [
+  { value: "parent", label: "Je suis parent" },
+  { value: "professionnel", label: "Je suis professionnel" },
+  { value: "etablissement", label: "Je représente un établissement" },
+];
+
 function InscriptionForm() {
   const searchParams = useSearchParams();
-  const defaultRole =
-    searchParams.get("role") === "professionnel" ? "professionnel" : "parent";
+  const roleDemande = searchParams.get("role");
+  const defaultRole = PROFILS.some((p) => p.value === roleDemande)
+    ? (roleDemande as string)
+    : "parent";
+  const [profil, setProfil] = useState(defaultRole);
   const [state, formAction, pending] = useActionState(signUp, undefined);
 
   return (
@@ -16,41 +25,53 @@ function InscriptionForm() {
       <h1 className="text-2xl font-semibold text-liams-navy">Créer un compte</h1>
 
       <form action={formAction} className="mt-8 flex flex-col gap-4">
-        <fieldset className="flex gap-6">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="role"
-              value="parent"
-              defaultChecked={defaultRole === "parent"}
-            />
-            Je suis parent
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="role"
-              value="professionnel"
-              defaultChecked={defaultRole === "professionnel"}
-            />
-            Je suis professionnel
-          </label>
+        <fieldset className="flex flex-col gap-2">
+          {PROFILS.map((p) => (
+            <label key={p.value} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="role"
+                value={p.value}
+                checked={profil === p.value}
+                onChange={() => setProfil(p.value)}
+              />
+              {p.label}
+            </label>
+          ))}
         </fieldset>
 
-        <div className="flex gap-3">
-          <input
-            name="prenom"
-            required
-            placeholder="Prénom"
-            className="w-full rounded-lg border border-gray-300 px-4 py-2"
-          />
-          <input
-            name="nom"
-            required
-            placeholder="Nom"
-            className="w-full rounded-lg border border-gray-300 px-4 py-2"
-          />
-        </div>
+        {/* Une crèche n'a pas de prénom. Lui présenter deux champs à remplir
+            l'obligerait à inventer une personne, qui s'afficherait ensuite aux
+            familles à la place du nom de la structure. */}
+        {profil === "etablissement" ? (
+          <div className="flex flex-col gap-1">
+            <input
+              name="nom_etablissement"
+              required
+              placeholder="Nom de l'établissement"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2"
+            />
+            <span className="text-xs text-gray-500">
+              La raison sociale, telle qu&apos;elle doit apparaître aux familles.
+              Vous compléterez SIRET, agrément et représentant légal ensuite.
+            </span>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <input
+              name="prenom"
+              required
+              placeholder="Prénom"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2"
+            />
+            <input
+              name="nom"
+              required
+              placeholder="Nom"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2"
+            />
+          </div>
+        )}
 
         <input
           name="email"

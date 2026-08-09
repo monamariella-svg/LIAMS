@@ -11,19 +11,37 @@ export async function signUp(
 ): Promise<AuthFormState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const role = String(formData.get("role") ?? "");
-  const prenom = String(formData.get("prenom") ?? "").trim();
-  const nom = String(formData.get("nom") ?? "").trim();
+  const profil = String(formData.get("role") ?? "");
   const cguAcceptees = formData.get("cgu") === "on";
 
   if (!email || !password) {
     return { error: "Email et mot de passe requis." };
   }
-  if (!prenom || !nom) {
-    return { error: "Prénom et nom requis." };
+  if (profil !== "parent" && profil !== "professionnel" && profil !== "etablissement") {
+    return { error: "Choisissez un profil." };
   }
-  if (role !== "parent" && role !== "professionnel") {
-    return { error: "Choisissez un profil (parent ou professionnel)." };
+
+  // Une crèche n'a ni prénom ni nom : elle a une raison sociale. Lui réclamer
+  // un prénom obligerait à inventer quelque chose, et cette invention
+  // s'afficherait ensuite aux familles.
+  //
+  // Le rôle en base reste `professionnel` : un établissement est réservable
+  // comme les autres, et tous les écrans professionnels le concernent. C'est
+  // la présence d'une ligne dans `etablissements` qui en fait une structure,
+  // pas une nature à part.
+  const estEtablissement = profil === "etablissement";
+  const role = estEtablissement ? "professionnel" : profil;
+
+  const prenom = estEtablissement ? "" : String(formData.get("prenom") ?? "").trim();
+  const nom = estEtablissement
+    ? String(formData.get("nom_etablissement") ?? "").trim()
+    : String(formData.get("nom") ?? "").trim();
+
+  if (estEtablissement && !nom) {
+    return { error: "Indiquez le nom de l'établissement." };
+  }
+  if (!estEtablissement && (!prenom || !nom)) {
+    return { error: "Prénom et nom requis." };
   }
   if (!cguAcceptees) {
     return {
@@ -38,7 +56,11 @@ export async function signUp(
     email,
     password,
     options: {
-      data: { role, cgu_acceptees: true, prenom, nom },
+      // `est_etablissement` sert avant que la fiche existe : à l'inscription,
+      // aucune ligne `etablissements` ne peut encore être créée — elle
+      // s'accroche au profil professionnel, qui n'est pas rempli. Ce drapeau
+      // permet aux écrans de savoir à qui ils parlent entre-temps.
+      data: { role, cgu_acceptees: true, prenom, nom, est_etablissement: estEtablissement },
       emailRedirectTo: `${siteUrl}/connexion`,
     },
   });
