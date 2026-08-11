@@ -14,6 +14,10 @@ const DOCUMENT_LABELS: Record<string, string> = {
   diplome: "Diplôme",
   certificat: "Certificat",
   photo_logement: "Photo du logement",
+  // Les deux pièces d'un établissement. Sans ces libellés, l'admin qui contrôle
+  // une crèche lit « agrement » — le nom de la colonne, pas celui du document.
+  agrement: "Agrément PMI",
+  assurance: "Attestation de responsabilité civile",
 };
 
 const STATUT_LABELS: Record<string, { label: string; className: string }> = {

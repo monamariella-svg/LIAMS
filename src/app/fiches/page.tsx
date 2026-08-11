@@ -1,4 +1,8 @@
-import { requireUser } from "@/lib/auth";
+import {
+  compteProfessionnelActif,
+  refuserSiAgrementExpire,
+  requireUser,
+} from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
 import { FicheEnfant, type EnfantAccueilli } from "./FicheEnfant";
 
@@ -17,6 +21,10 @@ export default async function FichesPage({
   searchParams: Promise<{ urgence_confirmee?: string }>;
 }) {
   const { supabase, user } = await requireUser("professionnel");
+  // Les gardes au-delà de l'échéance ont été annulées une semaine plus tôt :
+  // à ce stade il ne reste aucun enfant à accueillir, et donc aucune fiche à
+  // consulter.
+  await refuserSiAgrementExpire(await compteProfessionnelActif(supabase, user.id));
   const { urgence_confirmee } = await searchParams;
 
   // Les enfants dont ce professionnel a une réservation en cours ou à venir.

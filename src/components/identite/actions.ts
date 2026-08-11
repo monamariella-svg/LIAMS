@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { utilisateurDeLaSession } from "@/lib/auth";
+
+const RESEAU_INJOIGNABLE =
+  "Impossible de joindre le service pour l'instant. Vos informations n'ont pas été perdues : réessayez dans un instant.";
 
 export type IdentiteFormState = { error?: string; success?: boolean } | undefined;
 
@@ -10,9 +14,11 @@ export async function enregistrerIdentite(
   formData: FormData,
 ): Promise<IdentiteFormState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Une coupure réseau ne vaut pas une session perdue : la dire « expirée »
+  // enverrait se reconnecter quelqu'un qui l'est déjà, en lui faisant perdre
+  // ce qu'il vient de saisir.
+  const user = await utilisateurDeLaSession(supabase).catch(() => undefined);
+  if (user === undefined) return { error: RESEAU_INJOIGNABLE };
   if (!user) return { error: "Session expirée." };
 
   const prenom = String(formData.get("prenom") ?? "").trim();
@@ -83,9 +89,8 @@ export async function enregistrerDonneesContractuelles(
   formData: FormData,
 ): Promise<DonneesContractuellesFormState> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await utilisateurDeLaSession(supabase).catch(() => undefined);
+  if (user === undefined) return { error: RESEAU_INJOIGNABLE };
   if (!user) return { error: "Session expirée." };
 
   const texte = (champ: string) => {

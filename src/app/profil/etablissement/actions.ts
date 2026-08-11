@@ -40,14 +40,18 @@ export async function enregistrerEtablissement(
     };
   }
 
-  const nombreOuNull = (champ: string) => {
-    const brut = String(formData.get(champ) ?? "").trim();
-    if (!brut) return null;
-    const n = Number(brut);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  };
   const texteOuNull = (champ: string) =>
     String(formData.get(champ) ?? "").trim() || null;
+
+  const agrementDebut = texteOuNull("agrement_debut");
+  const agrementFin = texteOuNull("agrement_fin");
+
+  // Un agrément qui se termine avant d'avoir commencé est une faute de frappe,
+  // et elle passerait inaperçue : les deux dates sont lues séparément partout
+  // ailleurs.
+  if (agrementDebut && agrementFin && agrementFin < agrementDebut) {
+    return { error: "La fin de l'agrément doit être après son début." };
+  }
 
   const { error } = await supabase.from("etablissements").upsert(
     {
@@ -56,11 +60,20 @@ export async function enregistrerEtablissement(
       siret: texteOuNull("siret"),
       forme_juridique: texteOuNull("forme_juridique"),
       adresse_siege: texteOuNull("adresse_siege"),
-      representant_legal: texteOuNull("representant_legal"),
+      // Deux personnes, et non deux façons de nommer la même : celle qui signe
+      // pour la société, et celle qui tient ce compte. Voir la 0034.
+      representant_prenom: texteOuNull("representant_prenom"),
+      representant_nom: texteOuNull("representant_nom"),
+      representant_fonction: texteOuNull("representant_fonction"),
+      titulaire_prenom: texteOuNull("titulaire_prenom"),
+      titulaire_nom: texteOuNull("titulaire_nom"),
       type_etablissement: String(formData.get("type_etablissement") ?? "creche_collective"),
       agrement_numero: texteOuNull("agrement_numero"),
-      agrement_date: texteOuNull("agrement_date"),
-      agrement_places: nombreOuNull("agrement_places"),
+      agrement_debut: agrementDebut,
+      agrement_fin: agrementFin,
+      assurance_assureur: texteOuNull("assurance_assureur"),
+      assurance_numero: texteOuNull("assurance_numero"),
+      assurance_expiration: texteOuNull("assurance_expiration"),
     },
     { onConflict: "professional_id" },
   );
@@ -69,6 +82,108 @@ export async function enregistrerEtablissement(
 
   revalidatePath("/profil/etablissement");
   return { success: true, message: "Fiche enregistrée." };
+}
+
+/** L'identifiant de l'établissement de l'appelant, s'il en est le titulaire.
+ *  Les règles de la 0032 refuseraient de toute façon une écriture par un
+ *  compte secondaire ; on le vérifie ici pour pouvoir le dire en français. */
+async function ficheDuTitulaire(
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  userId: string,
+) {
+  const { data } = await supabase
+    .from("etablissements")
+    .select("id")
+    .eq("professional_id", userId)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+export async function ajouterTranche(
+  _prevState: EtablissementFormState,
+  formData: FormData,
+): Promise<EtablissementFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const etablissementId = await ficheDuTitulaire(supabase, user.id);
+  if (!etablissementId) {
+    return { error: "Enregistrez d'abord la fiche de l'établissement." };
+  }
+
+  const ageMin = Number(formData.get("age_min_mois") ?? NaN);
+  const ageMax = Number(formData.get("age_max_mois") ?? NaN);
+  const placesAgreees = Number(formData.get("places_agreees") ?? NaN);
+  const placesOuvertesSaisies = String(formData.get("places_ouvertes") ?? "").trim();
+
+  if (!Number.isFinite(ageMin) || !Number.isFinite(ageMax) || ageMin < 0 || ageMax < 0) {
+    return { error: "Indiquez les âges de la tranche, en mois." };
+  }
+  if (ageMax <= ageMin) {
+    return { error: "L'âge maximum doit être supérieur à l'âge minimum." };
+  }
+  if (!Number.isFinite(placesAgreees) || placesAgreees < 1) {
+    return { error: "Indiquez le nombre de places que votre agrément autorise pour cette section." };
+  }
+
+  // Laissé vide, on comprend « j'exploite tout ce qui m'est accordé » — le cas
+  // ordinaire. C'est la section fermée qui est l'exception, et elle se dit.
+  const placesOuvertes = placesOuvertesSaisies
+    ? Number(placesOuvertesSaisies)
+    : placesAgreees;
+
+  if (!Number.isFinite(placesOuvertes) || placesOuvertes < 1) {
+    return { error: "Le nombre de places ouvertes doit être d'au moins une." };
+  }
+  if (placesOuvertes > placesAgreees) {
+    return {
+      error: `Votre agrément autorise ${placesAgreees} place(s) pour cette section : vous ne pouvez pas en ouvrir ${placesOuvertes}.`,
+    };
+  }
+
+  const { error } = await supabase.from("etablissement_tranches").insert({
+    etablissement_id: etablissementId,
+    libelle: String(formData.get("libelle") ?? "").trim() || null,
+    age_min_mois: ageMin,
+    age_max_mois: ageMax,
+    places_agreees: placesAgreees,
+    places_ouvertes: placesOuvertes,
+    ordre: ageMin,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/profil/etablissement");
+  return { success: true, message: "Tranche ajoutée." };
+}
+
+export async function retirerTranche(
+  _prevState: EtablissementFormState,
+  formData: FormData,
+): Promise<EtablissementFormState> {
+  const { supabase, user } = await requireUser("professionnel");
+
+  const etablissementId = await ficheDuTitulaire(supabase, user.id);
+  if (!etablissementId) return { error: "Fiche introuvable." };
+
+  const { error } = await supabase
+    .from("etablissement_tranches")
+    .delete()
+    .eq("id", String(formData.get("tranche_id") ?? ""))
+    .eq("etablissement_id", etablissementId);
+
+  // La clé étrangère est en `restrict` : des créneaux pointent encore sur
+  // cette section. Les laisser partir avec elle effacerait des gardes déjà
+  // réservées sans que personne ne l'apprenne.
+  if (error?.code === "23503") {
+    return {
+      error:
+        "Des créneaux de votre planning sont ouverts sur cette section. Retirez-les d'abord, ou rattachez-les à une autre section.",
+    };
+  }
+  if (error) return { error: error.message };
+
+  revalidatePath("/profil/etablissement");
+  return { success: true, message: "Tranche retirée." };
 }
 
 // Les codes que renvoie `attacher_membre_etablissement()`. Les traduire ici

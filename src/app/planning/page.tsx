@@ -1,8 +1,13 @@
-import { requireUserParmi } from "@/lib/auth";
+import {
+  compteProfessionnelActif,
+  refuserSiAgrementExpire,
+  requireUserParmi,
+} from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { startOfWeek, todayISO } from "@/lib/calendar";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
+import type { TrancheOption } from "@/lib/tranches";
 import { CreneauRecurrentForm, type RecurrenceExistante } from "./CreneauRecurrentForm";
 import { RecurrencesList } from "./RecurrencesList";
 import { SupprimerCreneauButton } from "./SupprimerCreneauButton";
@@ -49,6 +54,14 @@ export default async function PlanningPage({
     );
   }
 
+  const compte = await compteProfessionnelActif(supabase, user.id);
+  await refuserSiAgrementExpire(compte);
+
+  // Le calendrier est celui de la structure. Un compte d'équipe qui lirait le
+  // sien n'y trouverait rien — c'est pourtant ce qu'il faisait, et la page
+  // « Mon établissement » lui promettait le contraire.
+  const { comptePro } = compte;
+
   const [
     { data: slots },
     { data: urgentBookings },
@@ -60,36 +73,55 @@ export default async function PlanningPage({
     supabase
       .from("availability_slots")
       .select("*")
-      .eq("professional_id", user.id)
+      .eq("professional_id", comptePro)
       .order("date")
       .order("heure_debut"),
     supabase
       .from("urgent_bookings")
       .select("*")
-      .eq("professional_id", user.id)
+      .eq("professional_id", comptePro)
       .eq("statut", "en_attente"),
     supabase
       .from("recurring_bookings")
       .select("*")
-      .eq("professional_id", user.id)
+      .eq("professional_id", comptePro)
       .in("statut", ["en_attente", "actif"]),
     supabase
       .from("slot_recurrences")
       .select("*")
-      .eq("professional_id", user.id)
+      .eq("professional_id", comptePro)
       .order("created_at"),
     supabase
       .from("demandes_creneaux")
       .select("id")
-      .eq("professional_id", user.id)
+      .eq("professional_id", comptePro)
       .eq("statut", "en_attente")
       .order("created_at"),
     supabase
       .from("professional_profiles")
       .select("lieu_accueil")
-      .eq("user_id", user.id)
+      .eq("user_id", comptePro)
       .maybeSingle(),
   ]);
+
+  // Les sections de l'établissement, s'il y en a un. Une liste vide laisse les
+  // formulaires exactement tels qu'ils étaient pour un indépendant.
+  const { data: fiche } = await supabase
+    .from("etablissements")
+    .select("id")
+    .eq("professional_id", comptePro)
+    .maybeSingle();
+
+  const { data: lignesTranches } = fiche
+    ? await supabase
+        .from("etablissement_tranches")
+        .select("id, libelle, age_min_mois, age_max_mois, places_ouvertes")
+        .eq("etablissement_id", fiche.id)
+        .order("ordre")
+        .order("age_min_mois")
+    : { data: [] };
+
+  const tranches = (lignesTranches ?? []) as TrancheOption[];
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
 
@@ -328,6 +360,7 @@ export default async function PlanningPage({
           slots={(slots ?? []) as CalendarSlot[]}
           editable
           addSlotAction={ajouterCreneau}
+          tranches={tranches}
           slotFooters={Object.fromEntries(
             (slots ?? []).map((slot) => {
               const restantes = restantesParSlot.get(slot.id) ?? slot.capacite ?? 1;
@@ -364,6 +397,7 @@ export default async function PlanningPage({
           listés, et bornés à deux mois pour que la liste reste lisible. */}
       <CreneauxAVenir
         lieuAccueilProfil={profilPro?.lieu_accueil}
+        tranches={tranches}
         creneaux={(slots ?? [])
           .filter((s) => s.date >= todayISO())
           .slice(0, 60)
@@ -376,10 +410,12 @@ export default async function PlanningPage({
             types_accueil: s.types_accueil ?? ["ponctuel"],
             lieu_accueil: s.lieu_accueil ?? null,
             placesRestantes: restantesParSlot.get(s.id) ?? s.capacite ?? 1,
+            tranche_id: s.tranche_id ?? null,
           }))}
       />
 
       <RecurrencesList
+        tranches={tranches}
         recurrences={
           (recurrences ?? []).map((rec) => ({
             ...rec,
@@ -394,7 +430,10 @@ export default async function PlanningPage({
         }
       />
 
-      <CreneauRecurrentForm lieuAccueilProfil={profilPro?.lieu_accueil} />
+      <CreneauRecurrentForm
+        lieuAccueilProfil={profilPro?.lieu_accueil}
+        tranches={tranches}
+      />
 
       <NavigationBas />
     </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState, type ReactNode } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { addDays, formatDateLabel, getWeekDates, todayISO } from "@/lib/calendar";
+import { libelleTranche, type TrancheOption } from "@/lib/tranches";
 
 export type SlotFormState = { error?: string; success?: boolean } | undefined;
 
@@ -40,6 +41,7 @@ export function WeekCalendar({
     { value: "libre", label: "Régulier" },
     { value: "libre_urgence", label: "Urgence" },
   ],
+  tranches = [],
 }: {
   weekStart: string;
   basePath: string;
@@ -60,6 +62,9 @@ export function WeekCalendar({
   /** Types proposés dans le formulaire d'ajout. Avec une seule entrée, le
    * sélecteur disparaît (ex. le parent n'ajoute que des "besoins"). */
   typesCreneau?: { value: string; label: string }[];
+  /** Sections de l'établissement. Vide pour un indépendant, qui n'en a pas :
+   * le sélecteur disparaît alors entièrement. */
+  tranches?: TrancheOption[];
 }) {
   const [jourOuvert, setJourOuvert] = useState<string | null>(null);
   const noopAction = async () => undefined;
@@ -164,6 +169,23 @@ export function WeekCalendar({
                     </select>
                   ) : (
                     <input type="hidden" name="statut" value={typesCreneau[0]?.value ?? ""} />
+                  )}
+                  {/* Une crèche ouvre un créneau POUR une section : six places
+                      bébés et six places grands ne se remplacent pas. */}
+                  {tranches.length > 0 && (
+                    <select
+                      name="tranche_id"
+                      required
+                      defaultValue={tranches.length === 1 ? tranches[0].id : ""}
+                      className="rounded border border-gray-300 px-1 py-0.5 text-[11px]"
+                    >
+                      {tranches.length > 1 && <option value="">Quelle section ?</option>}
+                      {tranches.map((tranche) => (
+                        <option key={tranche.id} value={tranche.id}>
+                          {libelleTranche(tranche)}
+                        </option>
+                      ))}
+                    </select>
                   )}
                   <div className="flex gap-1">
                     <button

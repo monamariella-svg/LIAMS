@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { compteProfessionnelActif } from "@/lib/auth";
 import { computeParentProgress, computeProfessionalProgress } from "@/lib/progress";
 import { TuileNavigation } from "@/components/TuileNavigation";
 
@@ -95,9 +96,39 @@ export default async function TableauDeBordPage() {
 
   const { data: identite } = await supabase
     .from("identites")
-    .select("prenom")
+    .select("prenom, nom")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  // Un établissement n'a pas de prénom : son nom tient cette place. Sans cela
+  // une crèche est accueillie par un « Bienvenue ! » sec, qui donne
+  // l'impression que le compte n'a pas été reconnu.
+  const nomAffiche = identite?.prenom || identite?.nom || "";
+
+  // Ce que le tableau de bord doit proposer à un établissement dépend de deux
+  // choses : est-ce une structure, et est-ce le compte principal.
+  let etablissement: { titre: string; description?: string } | null = null;
+
+  if (profile?.role === "professionnel") {
+    const { comptePro, estTitulaire } = await compteProfessionnelActif(supabase, user.id);
+    const { data: fiche } = await supabase
+      .from("etablissements")
+      .select("raison_sociale")
+      .eq("professional_id", comptePro)
+      .maybeSingle();
+
+    if (!estTitulaire) {
+      etablissement = {
+        titre: "Mon établissement",
+        description: fiche?.raison_sociale ?? "La structure à laquelle je suis rattaché",
+      };
+    } else if (Boolean(user.user_metadata?.est_etablissement) || fiche !== null) {
+      etablissement = {
+        titre: "Mon établissement",
+        description: fiche ? "Fiche et comptes de l'équipe" : "Fiche à compléter",
+      };
+    }
+  }
 
   const { data: feedbackEnAttente } = await supabase
     .from("feedback_pilote")
@@ -116,7 +147,7 @@ export default async function TableauDeBordPage() {
       <h1 className="text-2xl font-semibold text-liams-navy">
         {/* Les comptes créés avant que le prénom existe n'en ont pas :
             un accueil sans prénom vaut mieux qu'un accueil bancal. */}
-        Bienvenue{identite?.prenom ? ` ${identite.prenom}` : ""} !
+        Bienvenue{nomAffiche ? ` ${nomAffiche}` : ""} !
       </h1>
       <p className="mt-4 text-gray-600">
         {profilComplet
@@ -183,6 +214,14 @@ export default async function TableauDeBordPage() {
             titre="Mon profil"
             description={profilComplet ? undefined : "À compléter"}
           />
+          {etablissement && (
+            <TuileNavigation
+              href="/profil/etablissement"
+              icone="etablissement"
+              titre={etablissement.titre}
+              description={etablissement.description}
+            />
+          )}
           <TuileNavigation
             href={`/professionnels/${user.id}`}
             icone="vitrine"

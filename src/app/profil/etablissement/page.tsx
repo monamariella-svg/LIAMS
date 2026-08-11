@@ -3,10 +3,13 @@ import { compteProfessionnelActif, requireUser } from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
 import { EtablissementForm, type Etablissement } from "./EtablissementForm";
 import { MembresManager, type Membre } from "./MembresManager";
+import { TranchesManager, type Tranche } from "./TranchesManager";
+import { DocumentUploadForm } from "../professionnel/DocumentUploadForm";
 
 export default async function ProfilEtablissementPage() {
   const { supabase, user } = await requireUser("professionnel");
-  const { comptePro, estTitulaire } = await compteProfessionnelActif(supabase, user.id);
+  const { comptePro, estTitulaire, agrementExpire, agrementFin } =
+    await compteProfessionnelActif(supabase, user.id);
 
   const { data: etablissement } = await supabase
     .from("etablissements")
@@ -63,6 +66,17 @@ export default async function ProfilEtablissementPage() {
   }
 
   let membres: Membre[] = [];
+  let tranches: Tranche[] = [];
+
+  if (etablissement) {
+    const { data: lignesTranches } = await supabase
+      .from("etablissement_tranches")
+      .select("id, libelle, age_min_mois, age_max_mois, places_agreees, places_ouvertes")
+      .eq("etablissement_id", etablissement.id)
+      .order("ordre")
+      .order("age_min_mois");
+    tranches = (lignesTranches ?? []) as Tranche[];
+  }
 
   if (etablissement) {
     const { data: lignes } = await supabase
@@ -95,23 +109,90 @@ export default async function ProfilEtablissementPage() {
     }));
   }
 
+  const { data: documents } = await supabase
+    .from("professional_documents")
+    .select("id, type, fichier_url, statut")
+    .eq("professional_id", comptePro)
+    .in("type", ["agrement", "assurance"])
+    .order("date_upload", { ascending: false });
+
+  const documentsDeType = (type: string) =>
+    (documents ?? []).filter((d) => d.type === type);
+
+  const dateFr = agrementFin
+    ? new Date(agrementFin).toLocaleDateString("fr-FR")
+    : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold text-liams-navy">Mon établissement</h1>
+
+      {/* Accueillir sans autorisation du département est illégal : on ne
+          contourne pas, on remet l'agrément à jour. Le reste du compte est
+          fermé tant que ce n'est pas fait. */}
+      {agrementExpire && (
+        <section className="rounded-xl border-2 border-red-300 bg-red-50 p-6">
+          <h2 className="text-base font-semibold text-red-800">
+            Votre agrément a expiré{dateFr ? ` le ${dateFr}` : ""}
+          </h2>
+          <p className="mt-2 text-sm text-red-800">
+            Un établissement d&apos;accueil du jeune enfant ne peut pas accueillir
+            sans l&apos;autorisation du conseil départemental. Votre compte est
+            donc limité à cette page jusqu&apos;à la mise à jour de votre
+            agrément : mettez à jour sa date de fin ci-dessous et joignez le
+            justificatif. Les réservations qui dépassaient cette date ont été
+            annulées une semaine avant l&apos;échéance, et les familles
+            concernées prévenues.
+          </p>
+        </section>
+      )}
 
       <EtablissementForm
         etablissement={(etablissement as Etablissement) ?? null}
         raisonSocialeParDefaut={raisonSocialeParDefaut}
       />
 
-      {etablissement ? (
-        <MembresManager membres={membres} />
-      ) : (
+      {etablissement && (
+        <section className="rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-liams-navy">
+            Les justificatifs de la structure
+          </h2>
+          <p className="mt-1 text-sm text-gray-500">
+            Un établissement ne dépose ni CV ni diplôme : il dépose ce qui
+            atteste son droit d&apos;exercer. Le bulletin n°3 du casier
+            judiciaire reste demandé, mais c&apos;est celui du représentant — il
+            se dépose dans « Mon profil ».
+          </p>
+          <div className="mt-2">
+            <DocumentUploadForm
+              type="agrement"
+              label="Agrément PMI"
+              obligatoire
+              documents={documentsDeType("agrement")}
+            />
+            <DocumentUploadForm
+              type="assurance"
+              label="Attestation de responsabilité civile"
+              documents={documentsDeType("assurance")}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Tranches et comptes d'équipe n'ont plus d'objet tant que la structure
+          ne peut pas accueillir : les afficher inviterait à travailler sur un
+          calendrier qui n'ouvrira pas. */}
+      {etablissement && !agrementExpire ? (
+        <>
+          <TranchesManager tranches={tranches} />
+          <MembresManager membres={membres} />
+        </>
+      ) : !etablissement ? (
         <p className="rounded-xl border border-dashed border-gray-300 p-6 text-sm text-gray-500">
           Enregistrez d&apos;abord la fiche ci-dessus : vous pourrez ensuite y
           rattacher les comptes de votre équipe.
         </p>
-      )}
+      ) : null}
 
       <NavigationBas />
     </div>
