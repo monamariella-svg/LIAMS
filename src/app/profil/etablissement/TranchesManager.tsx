@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { ajouterTranche, retirerTranche } from "./actions";
+import { useActionState, useState } from "react";
+import { ajouterTranche, modifierTranche, retirerTranche } from "./actions";
 
 export type Tranche = {
   id: string;
@@ -42,8 +42,99 @@ function RetirerTrancheButton({ trancheId }: { trancheId: string }) {
   );
 }
 
+/** Modification d'une section déjà déclarée.
+ *
+ * Augmenter ne demande rien. Diminuer peut être refusé par le serveur, qui
+ * seul sait ce que les créneaux à venir proposent déjà — le formulaire ne
+ * l'anticipe pas, il rapporte le refus. */
+function FormulaireTranche({ tranche }: { tranche: Tranche }) {
+  const [state, formAction, pending] = useActionState(modifierTranche, undefined);
+
+  return (
+    <form action={formAction} className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
+      <input type="hidden" name="tranche_id" value={tranche.id} />
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label className="flex w-full flex-col gap-1 text-sm">
+          Nom (facultatif)
+          <input
+            name="libelle"
+            defaultValue={tranche.libelle ?? ""}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm sm:w-32">
+          De (mois)
+          <input
+            type="number"
+            name="age_min_mois"
+            min={0}
+            required
+            defaultValue={tranche.age_min_mois}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm sm:w-32">
+          À (mois)
+          <input
+            type="number"
+            name="age_max_mois"
+            min={1}
+            required
+            defaultValue={tranche.age_max_mois}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label className="flex flex-col gap-1 text-sm sm:w-56">
+          Places agréées
+          <input
+            type="number"
+            name="places_agreees"
+            min={1}
+            required
+            defaultValue={tranche.places_agreees}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm sm:w-56">
+          Places ouvertes
+          <input
+            type="number"
+            name="places_ouvertes"
+            min={1}
+            defaultValue={tranche.places_ouvertes}
+            className="rounded-lg border border-gray-300 px-4 py-2"
+          />
+        </label>
+      </div>
+
+      <p className="text-xs text-gray-500">
+        Augmenter est toujours possible. Diminuer ne l&apos;est que si vos
+        créneaux à venir tiennent sous le nouveau chiffre : réduisez-les
+        d&apos;abord au planning, sinon des familles perdraient une place déjà
+        réservée.
+      </p>
+
+      {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state?.success && <p className="text-sm text-green-700">{state.message}</p>}
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="self-start rounded-full bg-liams-teal px-5 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {pending ? "Enregistrement..." : "Enregistrer"}
+      </button>
+    </form>
+  );
+}
+
 export function TranchesManager({ tranches }: { tranches: Tranche[] }) {
   const [state, formAction, pending] = useActionState(ajouterTranche, undefined);
+  const [ouverte, setOuverte] = useState<string | null>(null);
   const totalAgreees = tranches.reduce((somme, t) => somme + t.places_agreees, 0);
   const totalOuvertes = tranches.reduce((somme, t) => somme + t.places_ouvertes, 0);
 
@@ -68,25 +159,38 @@ export function TranchesManager({ tranches }: { tranches: Tranche[] }) {
         <>
           <ul className="mt-4 flex flex-col divide-y divide-gray-100">
             {tranches.map((tranche) => (
-              <li key={tranche.id} className="flex items-center justify-between py-3">
-                <span className="flex flex-col">
-                  <span className="text-sm font-medium text-liams-navy">
-                    {tranche.libelle || "Sans nom"} —{" "}
-                    {tranche.places_ouvertes} place
-                    {tranche.places_ouvertes > 1 ? "s" : ""} ouverte
-                    {tranche.places_ouvertes > 1 ? "s" : ""}
-                    {tranche.places_ouvertes < tranche.places_agreees && (
-                      <span className="ml-1 font-normal text-gray-500">
-                        sur {tranche.places_agreees} agréée
-                        {tranche.places_agreees > 1 ? "s" : ""}
-                      </span>
-                    )}
+              <li key={tranche.id} className="py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-liams-navy">
+                      {tranche.libelle || "Sans nom"} —{" "}
+                      {tranche.places_ouvertes} place
+                      {tranche.places_ouvertes > 1 ? "s" : ""} ouverte
+                      {tranche.places_ouvertes > 1 ? "s" : ""}
+                      {tranche.places_ouvertes < tranche.places_agreees && (
+                        <span className="ml-1 font-normal text-gray-500">
+                          sur {tranche.places_agreees} agréée
+                          {tranche.places_agreees > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      De {enClair(tranche.age_min_mois)} à {enClair(tranche.age_max_mois)}
+                    </span>
                   </span>
-                  <span className="text-xs text-gray-500">
-                    De {enClair(tranche.age_min_mois)} à {enClair(tranche.age_max_mois)}
-                  </span>
-                </span>
-                <RetirerTrancheButton trancheId={tranche.id} />
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOuverte(ouverte === tranche.id ? null : tranche.id)}
+                      className="rounded-full border border-liams-navy px-3 py-1 text-xs text-liams-navy transition-colors hover:bg-liams-navy hover:text-white"
+                    >
+                      {ouverte === tranche.id ? "Fermer" : "Modifier"}
+                    </button>
+                    <RetirerTrancheButton trancheId={tranche.id} />
+                  </div>
+                </div>
+
+                {ouverte === tranche.id && <FormulaireTranche tranche={tranche} />}
               </li>
             ))}
           </ul>
