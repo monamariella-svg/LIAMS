@@ -9,6 +9,7 @@ import {
   type VarianteRecurrence,
 } from "./CreneauRecurrentForm";
 import { supprimerRecurrence, supprimerBesoinRecurrence } from "./actions";
+import type { TrancheOption } from "@/lib/tranches";
 
 const TYPE_LABELS: Record<string, string> = {
   libre: "Régulier",
@@ -30,9 +31,13 @@ const TEXTES: Record<VarianteRecurrence, { titre: string; description: string }>
 export function RecurrencesList({
   recurrences,
   variante = "creneaux",
+  tranches = [],
 }: {
   recurrences: RecurrenceExistante[];
   variante?: VarianteRecurrence;
+  /** Transmis au formulaire d'édition : modifier une série doit permettre d'en
+   * changer la section, sans quoi il faudrait la supprimer et la refaire. */
+  tranches?: TrancheOption[];
 }) {
   const [idEnEdition, setIdEnEdition] = useState<string | null>(null);
   const supprimerAction =
@@ -142,7 +147,11 @@ export function RecurrencesList({
               </div>
             </div>
             {idEnEdition === rec.id && (
-              <CreneauRecurrentForm recurrence={rec} variante={variante} />
+              <CreneauRecurrentForm
+                recurrence={rec}
+                variante={variante}
+                tranches={tranches}
+              />
             )}
           </div>
         ))}

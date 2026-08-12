@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { formatDateLabel } from "@/lib/calendar";
+import { libelleTranche, type TrancheOption } from "@/lib/tranches";
 import { modifierCreneau } from "./actions";
 
 export type CreneauModifiable = {
@@ -13,6 +14,7 @@ export type CreneauModifiable = {
   types_accueil: string[];
   lieu_accueil: string | null;
   placesRestantes: number;
+  tranche_id: string | null;
 };
 
 const TYPES_ACCUEIL = [
@@ -36,11 +38,14 @@ const TYPE_COURT: Record<string, string> = {
 export function CreneauxAVenir({
   creneaux,
   lieuAccueilProfil,
+  tranches = [],
 }: {
   creneaux: CreneauModifiable[];
   lieuAccueilProfil?: string;
+  tranches?: TrancheOption[];
 }) {
   const [ouvert, setOuvert] = useState<string | null>(null);
+  const trancheParId = new Map(tranches.map((t) => [t.id, t]));
 
   if (creneaux.length === 0) return null;
 
@@ -63,6 +68,13 @@ export function CreneauxAVenir({
                   {creneau.placesRestantes}/{creneau.capacite} libre
                   {creneau.capacite > 1 ? "s" : ""} ·{" "}
                   {creneau.types_accueil.map((t) => TYPE_COURT[t] ?? t).join(", ")}
+                  {/* Sans le nom de la section, deux créneaux du même jour à la
+                      même heure sont indiscernables dans la liste. */}
+                  {creneau.tranche_id && trancheParId.has(creneau.tranche_id) && (
+                    <span className="ml-1 text-liams-teal">
+                      · {trancheParId.get(creneau.tranche_id)!.libelle ?? "section"}
+                    </span>
+                  )}
                 </span>
               </span>
               <button
@@ -78,6 +90,7 @@ export function CreneauxAVenir({
               <FormulaireCreneau
                 creneau={creneau}
                 lieuAccueilProfil={lieuAccueilProfil}
+                tranches={tranches}
               />
             )}
           </div>
@@ -90,16 +103,49 @@ export function CreneauxAVenir({
 function FormulaireCreneau({
   creneau,
   lieuAccueilProfil,
+  tranches,
 }: {
   creneau: CreneauModifiable;
   lieuAccueilProfil?: string;
+  tranches: TrancheOption[];
 }) {
   const [state, formAction, pending] = useActionState(modifierCreneau, undefined);
+  const [trancheChoisie, setTrancheChoisie] = useState(creneau.tranche_id ?? "");
   const placesPrises = creneau.capacite - creneau.placesRestantes;
+
+  // Le maximum d'un créneau, c'est ce que sa section ouvre — pas les vingt
+  // enfants du plafond général, qui vise une assistante maternelle. Laisser
+  // saisir au-delà pour se faire refuser en base serait une perte de temps.
+  const tranche = tranches.find((t) => t.id === trancheChoisie);
+  const capaciteMax = tranche ? tranche.places_ouvertes : 20;
 
   return (
     <form action={formAction} className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
       <input type="hidden" name="slot_id" value={creneau.id} />
+
+      {tranches.length > 0 && (
+        <label className="flex flex-col gap-1 text-sm">
+          Section accueillie
+          <select
+            name="tranche_id"
+            required
+            value={trancheChoisie}
+            onChange={(e) => setTrancheChoisie(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          >
+            <option value="">Quelle section ?</option>
+            {tranches.map((t) => (
+              <option key={t.id} value={t.id}>
+                {libelleTranche(t)}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-gray-500">
+            Les âges accueillis sur ce créneau sont ceux de la section : ils ne se
+            saisissent pas deux fois.
+          </span>
+        </label>
+      )}
 
       <fieldset className="flex flex-wrap gap-3">
         <legend className="text-xs font-medium text-liams-navy">
@@ -124,10 +170,17 @@ function FormulaireCreneau({
           type="number"
           name="capacite"
           min={Math.max(1, placesPrises)}
-          max="20"
+          max={capaciteMax}
           defaultValue={creneau.capacite}
           className="w-24 rounded-lg border border-gray-300 px-3 py-2"
         />
+        {tranche && (
+          <span className="text-xs text-gray-500">
+            {tranche.places_ouvertes} place{tranche.places_ouvertes > 1 ? "s" : ""}{" "}
+            ouverte{tranche.places_ouvertes > 1 ? "s" : ""} dans cette section :
+            vous ne pouvez pas en proposer davantage sur un créneau.
+          </span>
+        )}
         {placesPrises > 0 && (
           <span className="text-xs text-gray-500">
             {placesPrises} place{placesPrises > 1 ? "s" : ""} déjà réservée

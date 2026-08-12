@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
+import { compteProfessionnelActif, requireUser } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
 import { journaliser } from "@/lib/journal";
 import { geocodeAdresse } from "@/lib/geocoding";
@@ -18,6 +18,9 @@ export async function ajouterCreneau(
   formData: FormData,
 ): Promise<PlanningFormState> {
   const { supabase, user } = await requireUser("professionnel");
+  // Le calendrier appartient à la structure, pas à la personne qui le
+  // remplit : un compte d'équipe ouvre les créneaux de sa crèche.
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
 
   const date = String(formData.get("date") ?? "");
   const heureDebut = String(formData.get("heure_debut") ?? "");
@@ -32,7 +35,7 @@ export async function ajouterCreneau(
   const { data: profil } = await supabase
     .from("professional_profiles")
     .select("types_accueil, lieu_accueil")
-    .eq("user_id", user.id)
+    .eq("user_id", comptePro)
     .maybeSingle();
 
   const capaciteSaisie = Number(formData.get("capacite") ?? 0);
@@ -40,7 +43,8 @@ export async function ajouterCreneau(
   const lieuSaisi = String(formData.get("lieu_accueil") ?? "");
 
   const { error } = await supabase.from("availability_slots").insert({
-    professional_id: user.id,
+    professional_id: comptePro,
+    tranche_id: String(formData.get("tranche_id") ?? "") || null,
     date,
     heure_debut: heureDebut,
     heure_fin: heureFin,
@@ -76,6 +80,7 @@ type ChampsRecurrence = {
   capacite: number;
   typesAccueil: string[];
   lieuAccueil: string | null;
+  trancheId: string | null;
 };
 
 function lireChampsRecurrence(
@@ -93,6 +98,7 @@ function lireChampsRecurrence(
   // Une série sans type d'accueil ne serait proposée à personne.
   const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
   const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
+  const trancheId = String(formData.get("tranche_id") ?? "") || null;
 
   if (!heureDebut || !heureFin || !dateDebut || !dateFin || jours.length === 0) {
     return { error: "Choisissez au moins un jour, un horaire et une période." };
@@ -127,6 +133,7 @@ function lireChampsRecurrence(
       capacite,
       typesAccueil,
       lieuAccueil,
+      trancheId,
     },
   };
 }
@@ -149,6 +156,9 @@ async function genererCreneaux(
     capacite: champs.capacite,
     types_accueil: champs.typesAccueil,
     lieu_accueil: champs.lieuAccueil,
+    // Toute la série ouvre pour la même section : c'est ce qui distingue deux
+    // séries aux mêmes horaires dans une crèche qui ouvre plusieurs sections.
+    tranche_id: champs.trancheId,
   }));
 
   // ignoreDuplicates laisse passer sans bruit les créneaux déjà présents à la
@@ -169,6 +179,7 @@ export async function ajouterCreneauxRecurrents(
   formData: FormData,
 ): Promise<PlanningFormState> {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
 
   const lu = lireChampsRecurrence(formData);
   if ("error" in lu) return { error: lu.error };
@@ -177,7 +188,7 @@ export async function ajouterCreneauxRecurrents(
   const { data: recurrence, error: erreurSerie } = await supabase
     .from("slot_recurrences")
     .insert({
-      professional_id: user.id,
+      professional_id: comptePro,
       jours: champs.jours,
       heure_debut: champs.heureDebut,
       heure_fin: champs.heureFin,
@@ -187,6 +198,7 @@ export async function ajouterCreneauxRecurrents(
       capacite: champs.capacite,
       types_accueil: champs.typesAccueil,
       lieu_accueil: champs.lieuAccueil,
+      tranche_id: champs.trancheId,
     })
     .select("id")
     .single();
@@ -195,7 +207,7 @@ export async function ajouterCreneauxRecurrents(
 
   const { error, crees, demandes } = await genererCreneaux(
     supabase,
-    user.id,
+    comptePro,
     recurrence.id,
     champs,
   );
@@ -226,6 +238,7 @@ export async function modifierCreneauxRecurrents(
   formData: FormData,
 ): Promise<PlanningFormState> {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
 
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
   if (!recurrenceId) return { error: "Récurrence introuvable." };
@@ -246,9 +259,10 @@ export async function modifierCreneauxRecurrents(
       capacite: champs.capacite,
       types_accueil: champs.typesAccueil,
       lieu_accueil: champs.lieuAccueil,
+      tranche_id: champs.trancheId,
     })
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .select("id")
     .single();
 
@@ -260,10 +274,10 @@ export async function modifierCreneauxRecurrents(
     .from("availability_slots")
     .delete()
     .eq("recurrence_id", recurrenceId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .neq("statut", "occupe");
 
-  const { error } = await genererCreneaux(supabase, user.id, recurrenceId, champs);
+  const { error } = await genererCreneaux(supabase, comptePro, recurrenceId, champs);
   if (error) return { error: error.message };
 
   revalidatePath("/planning");
@@ -501,6 +515,7 @@ export async function modifierCreneau(
   formData: FormData,
 ): Promise<PlanningFormState> {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
 
   const slotId = String(formData.get("slot_id") ?? "");
   if (!slotId) return { error: "Créneau introuvable." };
@@ -509,6 +524,7 @@ export async function modifierCreneau(
   const typesSaisis = formData.getAll("types_accueil").map(String);
   const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
   const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
+  const trancheId = String(formData.get("tranche_id") ?? "") || null;
 
   // Réduire la capacité en dessous des places déjà prises reviendrait à
   // déloger une famille sans le lui dire.
@@ -519,7 +535,7 @@ export async function modifierCreneau(
     .from("availability_slots")
     .select("capacite")
     .eq("id", slotId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .maybeSingle();
 
   if (!creneau) return { error: "Créneau introuvable." };
@@ -537,9 +553,10 @@ export async function modifierCreneau(
       capacite,
       types_accueil: typesAccueil,
       lieu_accueil: lieuAccueil,
+      tranche_id: trancheId,
     })
     .eq("id", slotId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", comptePro);
 
   if (error) return { error: error.message };
 

@@ -71,6 +71,14 @@ const ICONES: Record<string, ReactNode> = {
       d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8L12 4Z"
     />
   ),
+  etablissement: (
+    <>
+      <path {...T} d="M4 21V8l8-4 8 4v13" />
+      <path {...T} d="M3 21h18" />
+      <path {...T} d="M10 21v-5h4v5" />
+      <path {...T} d="M8.5 11h1.5M14 11h1.5" />
+    </>
+  ),
 };
 
 /** Tuile d'accès à une page.

@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { compteProfessionnelActif, requireUser } from "@/lib/auth";
+import {
+  compteProfessionnelActif,
+  refuserSiAgrementExpire,
+  requireUser,
+} from "@/lib/auth";
 import { computeProfessionalProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
 import { BarreProgression } from "@/components/BarreProgression";
@@ -16,7 +20,9 @@ import type { DocumentType } from "./actions";
 
 export default async function ProfilProfessionnelPage() {
   const { supabase, user } = await requireUser("professionnel");
-  const { estTitulaire } = await compteProfessionnelActif(supabase, user.id);
+  const compte = await compteProfessionnelActif(supabase, user.id);
+  await refuserSiAgrementExpire(compte);
+  const { estTitulaire } = compte;
 
   // Un compte secondaire d'établissement n'a pas de profil à lui : le tarif,
   // les documents, les badges et la vitrine appartiennent à la structure et

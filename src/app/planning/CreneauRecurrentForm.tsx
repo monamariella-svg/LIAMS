@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { JOURS_SEMAINE } from "@/lib/disponibilites";
 import { addDays, todayISO } from "@/lib/calendar";
+import { libelleTranche, type TrancheOption } from "@/lib/tranches";
 import {
   ajouterCreneauxRecurrents,
   modifierCreneauxRecurrents,
@@ -21,6 +22,7 @@ export type RecurrenceExistante = {
   capacite?: number;
   types_accueil?: string[];
   lieu_accueil?: string | null;
+  tranche_id?: string | null;
   /** Nombre de créneaux de la série qu'une famille a réservés. Décide de la
    * question posée avant suppression. */
   reservations?: number;
@@ -69,18 +71,25 @@ export function CreneauRecurrentForm({
   recurrence,
   variante = "creneaux",
   lieuAccueilProfil,
+  tranches = [],
 }: {
   recurrence?: RecurrenceExistante;
   variante?: VarianteRecurrence;
   /** Lieu déclaré au profil : le choix par créneau n'a de sens que si le
    * professionnel a répondu « l'un ou l'autre ». */
   lieuAccueilProfil?: string;
+  /** Sections de l'établissement. Vide pour un indépendant et pour un parent,
+   * qui n'en ont pas. */
+  tranches?: TrancheOption[];
 }) {
   const [state, formAction, pending] = useActionState(
     recurrence ? ACTIONS[variante].modifier : ACTIONS[variante].creer,
     undefined,
   );
   const [retouche, setRetouche] = useState(false);
+  const [trancheChoisie, setTrancheChoisie] = useState(recurrence?.tranche_id ?? "");
+  const trancheSelectionnee = tranches.find((t) => t.id === trancheChoisie);
+  const capaciteMax = trancheSelectionnee ? trancheSelectionnee.places_ouvertes : 20;
   const textes = TEXTES[variante];
   const today = todayISO();
   const dansHuitSemaines = addDays(today, 56);
@@ -155,16 +164,48 @@ export function CreneauRecurrentForm({
             ))}
           </fieldset>
 
+          {tranches.length > 0 && (
+            <label className="flex flex-col gap-1 text-sm">
+              Section accueillie
+              <select
+                name="tranche_id"
+                required
+                value={trancheChoisie}
+                onChange={(e) => setTrancheChoisie(e.target.value)}
+                className="rounded-lg border border-gray-300 px-3 py-2"
+              >
+                <option value="">Quelle section ?</option>
+                {tranches.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {libelleTranche(t)}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-500">
+                Toute la série ouvre pour cette section. Une crèche qui ouvre
+                plusieurs sections aux mêmes horaires crée une série par section.
+              </span>
+            </label>
+          )}
+
           <label className="flex flex-col gap-1 text-sm">
             Nombre d&apos;enfants accueillis en même temps
             <input
               type="number"
               name="capacite"
               min="1"
-              max="20"
+              max={capaciteMax}
               defaultValue={recurrence?.capacite ?? 1}
               className="w-24 rounded-lg border border-gray-300 px-3 py-2"
             />
+            {trancheSelectionnee && (
+              <span className="text-xs text-gray-500">
+                {trancheSelectionnee.places_ouvertes} place
+                {trancheSelectionnee.places_ouvertes > 1 ? "s" : ""} ouverte
+                {trancheSelectionnee.places_ouvertes > 1 ? "s" : ""} dans cette
+                section.
+              </span>
+            )}
           </label>
 
           {/* Le lieu ne se demande que si le professionnel a déclaré faire les

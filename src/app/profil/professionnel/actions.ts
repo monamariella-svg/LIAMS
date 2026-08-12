@@ -153,7 +153,17 @@ export async function soumettreDossier(
   return { success: true, dossierComplet: true };
 }
 
-const DOCUMENT_TYPES = ["casier", "cv", "diplome", "certificat", "photo_logement"] as const;
+// `agrement` et `assurance` sont les pièces d'un établissement : ce qui atteste
+// son droit d'exercer, là où un indépendant produit un CV et des diplômes.
+const DOCUMENT_TYPES = [
+  "casier",
+  "cv",
+  "diplome",
+  "certificat",
+  "photo_logement",
+  "agrement",
+  "assurance",
+] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export async function uploadDocument(
