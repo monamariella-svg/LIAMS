@@ -4,7 +4,7 @@ import {
   refuserSiAgrementExpire,
   requireUser,
 } from "@/lib/auth";
-import { computeProfessionalProgress } from "@/lib/progress";
+import { computeEtablissementProgress, computeProfessionalProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
 import { BarreProgression } from "@/components/BarreProgression";
 import { IdentiteForm } from "@/components/identite/IdentiteForm";
@@ -117,14 +117,17 @@ export default async function ProfilProfessionnelPage() {
         .select("telephone")
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabase.from("badges").select("code, label, description, mode").order("code"),
+      supabase
+        .from("badges")
+        .select("code, label, description, mode, pour_etablissement, pour_independant, label_etablissement")
+        .order("code"),
       supabase
         .from("professional_badges")
         .select("badge_code, statut")
         .eq("professional_id", user.id),
       supabase
         .from("etablissements")
-        .select("professional_id")
+        .select("id, siret, agrement_numero, agrement_fin, representant_nom")
         .eq("professional_id", user.id)
         .maybeSingle(),
     ]);
@@ -135,8 +138,19 @@ export default async function ProfilProfessionnelPage() {
   const estEtablissement =
     Boolean(user.user_metadata?.est_etablissement) || ficheEtablissement !== null;
 
-  const badgesSimples = (badges ?? []).filter((b) => b.mode === "auto_declare");
-  const badgesSpecialites = (badges ?? []).filter((b) => b.mode === "sur_validation");
+  // Un établissement ne se voit pas proposer ce qui ne veut rien dire de lui —
+  // un véhicule personnel, l'absence de tabac imposée par la loi. Et le statut
+  // de confiance se nomme dans sa langue : « Établissement Extra » là où une
+  // personne lit « Nounou Extra ». Voir la 0036.
+  const badgesDuPublic = (badges ?? [])
+    .filter((b) => (estEtablissement ? b.pour_etablissement : b.pour_independant))
+    .map((b) => ({
+      ...b,
+      label: (estEtablissement && b.label_etablissement) || b.label,
+    }));
+
+  const badgesSimples = badgesDuPublic.filter((b) => b.mode === "auto_declare");
+  const badgesSpecialites = badgesDuPublic.filter((b) => b.mode === "sur_validation");
   const statutParCode = new Map(
     (badgesAttribues ?? []).map((b) => [b.badge_code, b.statut as string]),
   );
@@ -144,17 +158,45 @@ export default async function ProfilProfessionnelPage() {
   const documentsParType = (docType: DocumentType) =>
     (documents ?? []).filter((d) => d.type === docType);
 
-  const { pourcentage, manquants } = computeProfessionalProgress({
-    infosGeneralesCompletes: Boolean(
-      profile?.adresse && profile?.tarif_horaire && coordonnees?.telephone,
-    ),
-    casierDepose: documentsParType("casier").length > 0,
-    cvDepose: documentsParType("cv").length > 0,
-    diplomeOuCertificatDepose:
-      documentsParType("diplome").length > 0 || documentsParType("certificat").length > 0,
-    questionXtrasRepondue: qualification !== null,
-    aUnePhoto: (photos?.length ?? 0) > 0,
-  });
+  const infosGeneralesCompletes = Boolean(
+    profile?.adresse && profile?.tarif_horaire && coordonnees?.telephone,
+  );
+
+  // Les sections ne se comptent que pour un établissement : une seule requête
+  // de plus, et seulement quand elle a un sens.
+  const { count: nbSections } = ficheEtablissement
+    ? await supabase
+        .from("etablissement_tranches")
+        .select("id", { count: "exact", head: true })
+        .eq("etablissement_id", ficheEtablissement.id)
+    : { count: 0 };
+
+  const { pourcentage, manquants } = estEtablissement
+    ? computeEtablissementProgress({
+        infosGeneralesCompletes,
+        // Ce qui rend la fiche vérifiable par une famille : qui est la
+        // société, et jusqu'à quand elle est autorisée à accueillir.
+        ficheEtablissementComplete: Boolean(
+          ficheEtablissement?.siret &&
+            ficheEtablissement?.agrement_numero &&
+            ficheEtablissement?.agrement_fin &&
+            ficheEtablissement?.representant_nom,
+        ),
+        agrementDepose: documentsParType("agrement").length > 0,
+        assuranceDeposee: documentsParType("assurance").length > 0,
+        auMoinsUneSection: (nbSections ?? 0) > 0,
+        questionXtrasRepondue: qualification !== null,
+        aUnePhoto: (photos?.length ?? 0) > 0,
+      })
+    : computeProfessionalProgress({
+        infosGeneralesCompletes,
+        casierDepose: documentsParType("casier").length > 0,
+        cvDepose: documentsParType("cv").length > 0,
+        diplomeOuCertificatDepose:
+          documentsParType("diplome").length > 0 || documentsParType("certificat").length > 0,
+        questionXtrasRepondue: qualification !== null,
+        aUnePhoto: (photos?.length ?? 0) > 0,
+      });
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
@@ -179,6 +221,7 @@ export default async function ProfilProfessionnelPage() {
         cadreExercice={profile?.cadre_exercice ?? null}
         lieuAccueil={profile?.lieu_accueil ?? "chez_le_pro"}
         typesAccueil={profile?.types_accueil ?? ["ponctuel"]}
+        estEtablissement={estEtablissement}
       />
 
       {/* Discret pour un indépendant, à qui cette page ne s'adresse pas ; mis
@@ -233,11 +276,26 @@ export default async function ProfilProfessionnelPage() {
 
       <section className="rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-liams-navy">Documents justificatifs</h2>
+        {/* Ce qui atteste le droit d'exercer n'est pas le même pour une
+            personne et pour une structure. Un établissement produit son
+            agrément et son assurance, sur la page de l'établissement ; ce qui
+            reste ici le concerne à titre personnel, et rien n'y est exigé pour
+            que son dossier avance. */}
+        {estEtablissement && (
+          <p className="mt-1 text-sm text-gray-500">
+            Les pièces de la structure — agrément PMI et responsabilité civile —
+            se déposent dans{" "}
+            <Link href="/profil/etablissement" className="text-liams-teal underline">
+              Mon établissement
+            </Link>
+            . Ce qui suit est facultatif et concerne les personnes.
+          </p>
+        )}
         <div className="mt-2">
           <DocumentUploadForm
             type="casier"
             label="Bulletin n°3 du casier judiciaire"
-            obligatoire
+            obligatoire={!estEtablissement}
             documents={documentsParType("casier")}
           />
           <DocumentUploadForm type="cv" label="CV" documents={documentsParType("cv")} />
@@ -251,7 +309,7 @@ export default async function ProfilProfessionnelPage() {
             label="Certificat(s) (PSC1, formations...)"
             documents={documentsParType("certificat")}
           />
-          {profile?.accueil_a_domicile && (
+          {!estEtablissement && profile?.accueil_a_domicile && (
             <DocumentUploadForm
               type="photo_logement"
               label="Photos du logement / lieu d'accueil"
@@ -290,7 +348,7 @@ export default async function ProfilProfessionnelPage() {
         supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""}
       />
 
-      <PromptsManager prompts={prompts ?? []} />
+      <PromptsManager prompts={prompts ?? []} estEtablissement={estEtablissement} />
 
       <QualificationXtraForm qualification={qualification} />
 

@@ -57,6 +57,7 @@ export function ProfessionalProfileForm({
   cadreExercice,
   lieuAccueil,
   typesAccueil,
+  estEtablissement = false,
 }: {
   tarifHoraire: number | null;
   tarifHoraireUrgence: number | null;
@@ -67,6 +68,8 @@ export function ProfessionalProfileForm({
   cadreExercice: string | null;
   lieuAccueil: string;
   typesAccueil: string[];
+  /** Une structure accueille dans ses murs : le lieu ne se demande pas. */
+  estEtablissement?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(updateProfessionalProfile, undefined);
 
@@ -133,28 +136,36 @@ export function ProfessionalProfileForm({
         ))}
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2 rounded-lg bg-gray-50 p-4">
-        <legend className="px-1 text-sm font-medium text-liams-navy">
-          Le lieu d&apos;accueil
-        </legend>
-        {LIEUX_ACCUEIL.map((l) => (
-          <label key={l.value} className="flex items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="lieu_accueil"
-              value={l.value}
-              defaultChecked={lieuAccueil === l.value}
-              className="mt-1"
-            />
-            <span>
-              <span className="font-medium">{l.label}</span>
-              {l.aide && (
-                <span className="block text-xs text-gray-500">{l.aide}</span>
-              )}
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      {/* Un établissement accueille dans ses murs, et nulle part ailleurs : la
+          question n'a pas de réponse à lui poser. La valeur part quand même,
+          en champ caché — l'action et la recherche la lisent, et l'omettre
+          ferait retomber la fiche sur « je choisirai ». */}
+      {estEtablissement ? (
+        <input type="hidden" name="lieu_accueil" value="chez_le_pro" />
+      ) : (
+        <fieldset className="flex flex-col gap-2 rounded-lg bg-gray-50 p-4">
+          <legend className="px-1 text-sm font-medium text-liams-navy">
+            Le lieu d&apos;accueil
+          </legend>
+          {LIEUX_ACCUEIL.map((l) => (
+            <label key={l.value} className="flex items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="lieu_accueil"
+                value={l.value}
+                defaultChecked={lieuAccueil === l.value}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium">{l.label}</span>
+                {l.aide && (
+                  <span className="block text-xs text-gray-500">{l.aide}</span>
+                )}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
@@ -205,10 +216,17 @@ export function ProfessionalProfileForm({
         />
       </label>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="accueil_a_domicile" defaultChecked={accueilADomicile} />
-        J&apos;accueille les enfants à mon domicile ou dans un établissement
-      </label>
+      {/* Même raison : la case dit « à mon domicile ou dans un établissement »,
+          ce qui est toujours vrai d'une crèche. La cocher pour elle évite qu'un
+          filtre de recherche l'écarte. */}
+      {estEtablissement ? (
+        <input type="hidden" name="accueil_a_domicile" value="on" />
+      ) : (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="accueil_a_domicile" defaultChecked={accueilADomicile} />
+          J&apos;accueille les enfants à mon domicile ou dans un établissement
+        </label>
+      )}
 
       <p className="text-xs text-gray-500">
         Tes disponibilités se gèrent maintenant directement dans ton{" "}

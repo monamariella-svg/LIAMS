@@ -2,11 +2,18 @@
 
 import { useActionState, useRef } from "react";
 import { upsertPrompt, supprimerPrompt } from "./actions";
-import { PROMPTS_SUGGERES, NB_PROMPTS_MAX } from "@/lib/prompts";
+import { promptsSugeres, NB_PROMPTS_MAX } from "@/lib/prompts";
 
 type Prompt = { id: string; question: string; reponse: string };
 
-function PromptForm({ prompt }: { prompt?: Prompt }) {
+function PromptForm({
+  prompt,
+  estEtablissement,
+}: {
+  prompt?: Prompt;
+  estEtablissement: boolean;
+}) {
+  const questions = promptsSugeres(estEtablissement);
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(async (prevState: unknown, formData: FormData) => {
     const result = await upsertPrompt(prevState as never, formData);
@@ -26,7 +33,14 @@ function PromptForm({ prompt }: { prompt?: Prompt }) {
         <option value="" disabled>
           Choisissez une question...
         </option>
-        {PROMPTS_SUGGERES.map((q) => (
+        {/* Une question déjà répondue peut venir de l'autre liste — un compte
+            devenu établissement après coup garde ses anciennes cartes. Sans
+            cette entrée, le select ne retrouverait pas sa valeur et
+            afficherait « Choisissez une question ». */}
+        {prompt && !questions.includes(prompt.question as never) && (
+          <option value={prompt.question}>{prompt.question}</option>
+        )}
+        {questions.map((q) => (
           <option key={q} value={q}>
             {q}
           </option>
@@ -62,11 +76,19 @@ function PromptForm({ prompt }: { prompt?: Prompt }) {
   );
 }
 
-export function PromptsManager({ prompts }: { prompts: Prompt[] }) {
+export function PromptsManager({
+  prompts,
+  estEtablissement = false,
+}: {
+  prompts: Prompt[];
+  /** Les questions se posent alors au nom d'une équipe, pas d'une personne. */
+  estEtablissement?: boolean;
+}) {
   return (
     <section className="rounded-xl border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-liams-navy">
-        Mes prompts ({prompts.length}/{NB_PROMPTS_MAX})
+        {estEtablissement ? "Nos prompts" : "Mes prompts"} ({prompts.length}/
+        {NB_PROMPTS_MAX})
       </h2>
       <p className="mt-1 text-xs text-gray-500">
         Choisissez 3 à 5 questions et répondez-y brièvement — ça remplace la présentation textuelle classique.
@@ -74,9 +96,15 @@ export function PromptsManager({ prompts }: { prompts: Prompt[] }) {
 
       <div className="mt-4 flex flex-col gap-3">
         {prompts.map((prompt) => (
-          <PromptForm key={prompt.id} prompt={prompt} />
+          <PromptForm
+            key={prompt.id}
+            prompt={prompt}
+            estEtablissement={estEtablissement}
+          />
         ))}
-        {prompts.length < NB_PROMPTS_MAX && <PromptForm />}
+        {prompts.length < NB_PROMPTS_MAX && (
+          <PromptForm estEtablissement={estEtablissement} />
+        )}
       </div>
     </section>
   );

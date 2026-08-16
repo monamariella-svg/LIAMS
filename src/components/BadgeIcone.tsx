@@ -101,6 +101,14 @@ const ICONES: Record<string, ReactNode> = {
     </>
   ),
   coup_de_coeur: <path {...T} d="M12 20 4.6 12.6a4.6 4.6 0 0 1 7.4-5.2 4.6 4.6 0 0 1 7.4 5.2L12 20Z" />,
+  // Un cadran plutôt qu'un point d'exclamation : ce badge dit qu'on peut
+  // appeler dans l'urgence, pas qu'il y a un problème.
+  accueil_urgence: (
+    <>
+      <circle {...T} cx="12" cy="12" r="8.5" />
+      <path {...T} d="M12 7.5V12l3 2" />
+    </>
+  ),
 };
 
 const FAMILLE_PAR_CODE: Record<string, Famille> = {
@@ -118,6 +126,7 @@ const FAMILLE_PAR_CODE: Record<string, Famille> = {
   aide_devoirs: "pratique",
   non_fumeur: "pratique",
   coup_de_coeur: "pratique",
+  accueil_urgence: "pratique",
 };
 
 export function BadgeIcone({
