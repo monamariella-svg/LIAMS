@@ -107,7 +107,7 @@ export async function PlanningParent({
     supabase.from("parent_networks").select("professional_id, statut").eq("parent_id", userId),
     // Tous les badges : les manuels alimentent les filtres, mais il faut
     // aussi le libellé de l'automatique (coup de cœur) pour l'afficher.
-    supabase.from("badges").select("code, label, source").order("code"),
+    supabase.from("badges").select("code, label, source, pour_etablissement").order("code"),
     supabase.from("professional_photos").select("professional_id, fichier_url").order("ordre"),
     supabase
       .from("demandes_creneaux")
@@ -352,6 +352,16 @@ export async function PlanningParent({
       !typeAccueil || (p.types_accueil ?? ["ponctuel"]).includes(typeAccueil),
   );
 
+  // Quels professionnels sont des structures. La fiche d'établissement est
+  // publique depuis la 0028, et c'est elle qui fait foi — un compte peut le
+  // devenir après son inscription.
+  const { data: fichesEtablissements } = await supabase
+    .from("etablissements")
+    .select("professional_id");
+  const estEtablissement = new Set(
+    (fichesEtablissements ?? []).map((e) => e.professional_id as string),
+  );
+
   const candidats: ProfessionalCandidat[] = professionnelsRetenus.map((p) => ({
     user_id: p.user_id,
     slots: creneauxParPro.get(p.user_id) ?? [],
@@ -361,7 +371,14 @@ export async function PlanningParent({
     specialisations: p.specialisations ?? [],
     note_moyenne: p.note_moyenne,
     badges: (p.professional_badges ?? []).map((b: { badge_code: string }) => b.badge_code),
+    est_etablissement: estEtablissement.has(p.user_id),
   }));
+
+  // Les badges qu'une structure ne peut pas cocher, et qu'elle satisfait donc
+  // d'office quand un parent les demande.
+  const badgesSansObjetPourEtablissement = (badgesCatalogue ?? [])
+    .filter((b) => b.pour_etablissement === false)
+    .map((b) => b.code as string);
   const profilsParId = new Map(professionnelsRetenus.map((p) => [p.user_id, p]));
   const labelsBadges = new Map<string, string>(
     (badgesCatalogue ?? []).map((b) => [b.code, b.label]),
@@ -398,6 +415,7 @@ export async function PlanningParent({
         },
         couloirTrajetKm: rayonKm,
         badgesRequis: parentProfile?.badges_souhaites ?? [],
+        badgesSansObjetPourEtablissement,
       }
     : {
         // À défaut de ville renseignée, on retombe sur l'adresse du profil.
@@ -409,6 +427,7 @@ export async function PlanningParent({
               : undefined,
         rayonKm,
         badgesRequis: parentProfile?.badges_souhaites ?? [],
+        badgesSansObjetPourEtablissement,
       };
 
   // Les pros du réseau passent devant, sans jamais exclure les autres profils.

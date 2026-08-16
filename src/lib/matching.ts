@@ -14,6 +14,12 @@ export type CritereRecherche = {
   trajetArrivee?: Point;
   couloirTrajetKm?: number;
   badgesRequis?: string[];
+  /** Les badges qu'une structure ne peut pas déclarer, parce qu'ils ne veulent
+   *  rien dire d'elle — un véhicule personnel, l'absence de tabac qu'impose
+   *  déjà la loi. Voir la 0036. Un établissement les satisfait d'office : sans
+   *  cela, une famille qui coche « Non fumeur » écarterait toutes les crèches
+   *  du pays, pour un critère qu'elles remplissent toutes. */
+  badgesSansObjetPourEtablissement?: string[];
   tagsBesoins?: string[];
 };
 
@@ -34,7 +40,29 @@ export type ProfessionalCandidat = {
   specialisations: string[];
   note_moyenne: number | null;
   badges: string[];
+  /** Porte une fiche d'établissement. Décide de la lecture des badges qui ne
+   *  s'adressent qu'aux personnes. */
+  est_etablissement?: boolean;
 };
+
+/** Ce professionnel répond-il aux badges demandés.
+ *
+ * Extrait des deux fonctions de recherche, qui portaient la même règle écrite
+ * deux fois — et l'auraient donc corrigée une fois sur deux. */
+function badgesCompatibles(
+  candidat: ProfessionalCandidat,
+  criteres: CritereRecherche,
+): boolean {
+  if (!criteres.badgesRequis?.length) return true;
+
+  const sansObjet = new Set(criteres.badgesSansObjetPourEtablissement ?? []);
+
+  return criteres.badgesRequis.every(
+    (badge) =>
+      candidat.badges.includes(badge) ||
+      (candidat.est_etablissement === true && sansObjet.has(badge)),
+  );
+}
 
 // Horizon de recherche : un créneau du calendrier n'est pris en compte pour le
 // matching que s'il tombe dans les N prochains jours (au-delà, le professionnel
@@ -152,11 +180,7 @@ export function proposerPourBesoin(
     })
     .filter(({ creneaux }) => creneaux.length > 0)
     .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
-    .filter(({ candidat }) =>
-      criteres.badgesRequis?.length
-        ? criteres.badgesRequis.every((b) => candidat.badges.includes(b))
-        : true,
-    )
+    .filter(({ candidat }) => badgesCompatibles(candidat, criteres))
     .map(({ candidat, creneaux, distance }) => ({
       candidat,
       distanceKm: distance,
@@ -176,11 +200,7 @@ export function matchProfessionnels(
     .filter((c) => planningCompatible(c.slots, criteres.jour, criteres.heureDebut, criteres.heureFin))
     .map((c) => ({ candidat: c, distance: distanceCandidat(c, criteres) }))
     .filter(({ candidat, distance }) => geoCompatible(distance, candidat, criteres))
-    .filter(({ candidat }) =>
-      criteres.badgesRequis?.length
-        ? criteres.badgesRequis.every((b) => candidat.badges.includes(b))
-        : true,
-    )
+    .filter(({ candidat }) => badgesCompatibles(candidat, criteres))
     .map(({ candidat, distance }) => ({
       candidat,
       distanceKm: distance,
