@@ -281,15 +281,24 @@ export async function uploadPhoto(
     .upload(path, file);
   if (uploadError) return { error: uploadError.message };
 
+  // Ce que montre la photo. Sans cette précision, une fiche aligne six images
+  // sans qu'on sache lesquelles montrent l'endroit où l'enfant passera ses
+  // journées — la question que les familles posent en premier.
+  const sujet = String(formData.get("sujet") ?? "portrait") === "lieu" ? "lieu" : "portrait";
+  const legende = String(formData.get("legende") ?? "").trim() || null;
+
   const { error } = await supabase.from("professional_photos").insert({
     professional_id: user.id,
     fichier_url: path,
     ordre: count ?? 0,
+    sujet,
+    legende,
   });
 
   if (error) return { error: error.message };
 
   revalidatePath("/profil/professionnel");
+  revalidatePath(`/professionnels/${user.id}`);
   return { success: true };
 }
 
