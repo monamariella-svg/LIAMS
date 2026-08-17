@@ -291,6 +291,10 @@ export async function modifierCreneauxRecurrents(
  * ici, là où il reste facultatif sur un créneau isolé. */
 export async function supprimerRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  // La série appartient à la structure ; c'est une personne qui la retire.
+  // Les deux se disent séparément : `comptePro` pour ce qui est supprimé et
+  // pour le nom que lisent les familles, `user.id` pour l'acteur au journal.
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
   const motif = String(formData.get("motif") ?? "").trim();
   if (!recurrenceId) return;
@@ -304,7 +308,7 @@ export async function supprimerRecurrence(formData: FormData) {
     .from("availability_slots")
     .select("id, date, heure_debut")
     .eq("recurrence_id", recurrenceId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", comptePro);
 
   const idsCreneaux = (creneaux ?? []).map((c) => c.id);
   const dateParCreneau = new Map((creneaux ?? []).map((c) => [c.id, c.date]));
@@ -353,7 +357,7 @@ export async function supprimerRecurrence(formData: FormData) {
     .from("slot_recurrences")
     .select("jours, heure_debut")
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .maybeSingle();
 
   // Les réservations récurrentes ne visent aucun créneau : elles se
@@ -362,7 +366,7 @@ export async function supprimerRecurrence(formData: FormData) {
     ? await supabase
         .from("recurring_bookings")
         .select("id, parent_id, enfant_ids, jour_semaine")
-        .eq("professional_id", user.id)
+        .eq("professional_id", comptePro)
         .eq("heure_debut", serie.heure_debut)
         .in("statut", ["en_attente", "actif"])
     : { data: [] };
@@ -422,19 +426,22 @@ export async function supprimerRecurrence(formData: FormData) {
       .from("availability_slots")
       .delete()
       .in("id", aSupprimer)
-      .eq("professional_id", user.id);
+      .eq("professional_id", comptePro);
   }
 
   await supabase
     .from("slot_recurrences")
     .delete()
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", comptePro);
 
+  // Le nom que lisent les familles est celui de qui les accueille, pas celui
+  // de la salariée qui a cliqué : « Crèche les doudous annule », et non
+  // « Marie Dupont annule », que personne ne reconnaîtrait.
   const { data: moi } = await supabase
     .from("identites")
     .select("prenom, nom")
-    .eq("user_id", user.id)
+    .eq("user_id", comptePro)
     .maybeSingle();
   const nomPro = [moi?.prenom, moi?.nom].filter(Boolean).join(" ") || "Le professionnel";
 
@@ -461,7 +468,7 @@ export async function supprimerRecurrence(formData: FormData) {
       type: "annulation_pro_serie",
       acteurId: user.id,
       parentId,
-      professionalId: user.id,
+      professionalId: comptePro,
       detail: {
         recurrence_id: recurrenceId,
         portee,
@@ -574,6 +581,7 @@ export async function modifierCreneau(
  * voit ce qu'il s'apprête à défaire. */
 export async function supprimerCreneau(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
   const slotId = String(formData.get("slot_id") ?? "");
   if (!slotId) return;
 
@@ -581,7 +589,7 @@ export async function supprimerCreneau(formData: FormData) {
     .from("availability_slots")
     .select("id, date, heure_debut, heure_fin")
     .eq("id", slotId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .maybeSingle();
   if (!creneau) return;
 
@@ -641,7 +649,7 @@ export async function supprimerCreneau(formData: FormData) {
     .from("availability_slots")
     .delete()
     .eq("id", slotId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", comptePro);
 
   // Le motif est facultatif : on ne fabrique pas de phrase quand il est vide.
   const motif = String(formData.get("motif") ?? "").trim();
@@ -649,10 +657,11 @@ export async function supprimerCreneau(formData: FormData) {
     ? `<p>Motif indiqué : <em>${motif.replace(/[<>]/g, "")}</em></p>`
     : "";
 
+  // Celui de la structure, pas de la personne qui a cliqué.
   const { data: moi } = await supabase
     .from("identites")
     .select("prenom, nom")
-    .eq("user_id", user.id)
+    .eq("user_id", comptePro)
     .maybeSingle();
   const nomPro =
     [moi?.prenom, moi?.nom].filter(Boolean).join(" ") || "Le professionnel";
@@ -669,7 +678,7 @@ export async function supprimerCreneau(formData: FormData) {
       type: "annulation_pro_creneau",
       acteurId: user.id,
       parentId,
-      professionalId: user.id,
+      professionalId: comptePro,
       detail: {
         creneau: quand,
         slot_id: slotId,
@@ -962,6 +971,7 @@ export async function supprimerBesoinRecurrence(formData: FormData) {
 
 export async function traiterDemandeCreneaux(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
 
   const demandeId = String(formData.get("demande_id") ?? "");
   const acceptes = new Set(formData.getAll("slot_ids").map((s) => String(s)));
@@ -971,7 +981,7 @@ export async function traiterDemandeCreneaux(formData: FormData) {
     .from("demandes_creneaux")
     .select("id, parent_id, enfant_ids")
     .eq("id", demandeId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .maybeSingle();
   if (!demande) return;
 
@@ -1018,7 +1028,7 @@ export async function traiterDemandeCreneaux(formData: FormData) {
     type: "creneaux_valides",
     acteurId: user.id,
     parentId: demande.parent_id,
-    professionalId: user.id,
+    professionalId: comptePro,
     detail: {
       demande_id: demandeId,
       acceptes: nbAcceptes,
@@ -1067,13 +1077,14 @@ export async function confirmerReservationUrgente(formData: FormData) {
 
 export async function refuserReservationUrgente(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
   const bookingId = String(formData.get("booking_id") ?? "");
 
   const { data: booking } = await supabase
     .from("urgent_bookings")
     .update({ statut: "refuse" })
     .eq("id", bookingId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .select("parent_id")
     .maybeSingle();
 
@@ -1091,13 +1102,14 @@ export async function refuserReservationUrgente(formData: FormData) {
 
 export async function validerRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
 
   const { data: reservation } = await supabase
     .from("recurring_bookings")
     .update({ statut: "actif" })
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .select("parent_id")
     .maybeSingle();
 
@@ -1115,20 +1127,21 @@ export async function validerRecurrence(formData: FormData) {
 
 export async function refuserRecurrence(formData: FormData) {
   const { supabase, user } = await requireUser("professionnel");
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
   const recurrenceId = String(formData.get("recurrence_id") ?? "");
 
   const { data: reservation } = await supabase
     .from("recurring_bookings")
     .select("parent_id, statut")
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id)
+    .eq("professional_id", comptePro)
     .single();
 
   await supabase
     .from("recurring_bookings")
     .update({ statut: "annule" })
     .eq("id", recurrenceId)
-    .eq("professional_id", user.id);
+    .eq("professional_id", comptePro);
 
   // Message différent selon qu'on refuse une demande en attente ou qu'on
   // annule une récurrence déjà validée sur laquelle le parent comptait.

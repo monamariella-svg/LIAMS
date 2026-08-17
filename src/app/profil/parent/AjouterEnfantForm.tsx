@@ -25,11 +25,19 @@ export function AjouterEnfantForm() {
           placeholder="Prénom"
           className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
         />
-        <input
-          name="date_naissance"
-          type="date"
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
-        />
+        {/* Requise, et pas par formalisme : c'est elle qui décide des places
+            proposées, une section d'établissement n'accueillant qu'une tranche
+            d'âge donnée. */}
+        <label className="flex flex-col gap-1 text-xs text-gray-500">
+          Date de naissance
+          <input
+            name="date_naissance"
+            type="date"
+            required
+            max={new Date().toISOString().slice(0, 10)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-900"
+          />
+        </label>
       </div>
       <textarea
         name="besoins_particuliers_libre"

@@ -20,6 +20,17 @@ const DOCUMENT_LABELS: Record<string, string> = {
   assurance: "Attestation de responsabilité civile",
 };
 
+/** Une ligne de fiche. Un tiret plutôt qu'un vide : l'admin doit distinguer
+ *  « non renseigné » de « je n'ai pas affiché le champ ». */
+function Ligne({ terme, valeur }: { terme: string; valeur: string | null }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-gray-400">{terme}</dt>
+      <dd className={valeur ? "text-gray-800" : "text-gray-400"}>{valeur || "—"}</dd>
+    </div>
+  );
+}
+
 const STATUT_LABELS: Record<string, { label: string; className: string }> = {
   en_attente: { label: "En attente", className: "bg-amber-100 text-amber-800" },
   valide: { label: "Validé", className: "bg-green-100 text-green-800" },
@@ -44,6 +55,7 @@ export default async function AdminProfessionnelPage({
     { data: identite },
     { data: compte },
     { data: coordonnees },
+    { data: etablissement },
   ] = await Promise.all([
     supabase.from("professional_profiles").select("*").eq("user_id", id).maybeSingle(),
     supabase.from("professional_documents").select("*").eq("professional_id", id).order("date_upload"),
@@ -61,9 +73,29 @@ export default async function AdminProfessionnelPage({
     supabase.from("identites").select("prenom, nom").eq("user_id", id).maybeSingle(),
     supabase.from("users").select("email").eq("id", id).maybeSingle(),
     supabase.from("coordonnees").select("telephone").eq("user_id", id).maybeSingle(),
+    supabase.from("etablissements").select("*").eq("professional_id", id).maybeSingle(),
   ]);
 
   if (!profile) notFound();
+
+  // Les sections, seulement s'il y a une structure. Contrôler un agrément sans
+  // voir la répartition des places revient à contrôler un chiffre sans savoir
+  // à quoi il s'applique.
+  const { data: tranches } = etablissement
+    ? await supabase
+        .from("etablissement_tranches")
+        .select("id, libelle, age_min_mois, age_max_mois, places_agreees, places_ouvertes")
+        .eq("etablissement_id", etablissement.id)
+        .order("ordre")
+    : { data: [] };
+
+  const dateFr = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("fr-FR") : "—";
+
+  const agrementExpire = Boolean(
+    etablissement?.agrement_fin &&
+      etablissement.agrement_fin < new Date().toISOString().slice(0, 10),
+  );
 
   const badgesAttribuesSet = new Set(
     (badgesAttribues ?? []).filter((b) => b.statut === "valide").map((b) => b.badge_code),
@@ -78,7 +110,7 @@ export default async function AdminProfessionnelPage({
           sens : l'identité passe en tête de page. */}
       <div>
         <p className="text-xs uppercase tracking-wide text-gray-400">
-          Vérification professionnel
+          {etablissement ? "Vérification établissement" : "Vérification professionnel"}
         </p>
         <h1 className="text-2xl font-semibold text-liams-navy">
           {[identite?.prenom, identite?.nom].filter(Boolean).join(" ") ||
@@ -88,7 +120,103 @@ export default async function AdminProfessionnelPage({
           {compte?.email}
           {coordonnees?.telephone ? ` · ${coordonnees.telephone}` : ""}
         </p>
+        {/* Pour une structure, `identites` porte la raison sociale : le titre
+            nomme donc la crèche, et non la personne à qui l'on téléphone quand
+            quelque chose ne va pas. La 0034 la retient pour cette raison. */}
+        {etablissement && (
+          <p className="mt-1 text-sm text-gray-500">
+            Compte tenu par{" "}
+            <span className="text-liams-navy">
+              {[etablissement.titulaire_prenom, etablissement.titulaire_nom]
+                .filter(Boolean)
+                .join(" ") || "— non renseigné"}
+            </span>
+          </p>
+        )}
       </div>
+
+      {etablissement && (
+        <section
+          className={`rounded-xl border p-6 ${
+            agrementExpire ? "border-red-300 bg-red-50" : "border-gray-200"
+          }`}
+        >
+          <h2 className="text-lg font-semibold text-liams-navy">L&apos;établissement</h2>
+
+          <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <Ligne terme="Raison sociale" valeur={etablissement.raison_sociale} />
+            <Ligne terme="SIRET" valeur={etablissement.siret} />
+            <Ligne terme="Forme juridique" valeur={etablissement.forme_juridique} />
+            <Ligne terme="Type" valeur={etablissement.type_etablissement} />
+            <Ligne terme="Adresse du siège" valeur={etablissement.adresse_siege} />
+            <Ligne
+              terme="Représentant légal"
+              valeur={
+                [etablissement.representant_prenom, etablissement.representant_nom]
+                  .filter(Boolean)
+                  .join(" ") +
+                  (etablissement.representant_fonction
+                    ? ` — ${etablissement.representant_fonction}`
+                    : "") || null
+              }
+            />
+          </dl>
+
+          <h3 className="mt-5 text-sm font-semibold text-liams-navy">Agrément PMI</h3>
+          <dl className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <Ligne terme="Numéro" valeur={etablissement.agrement_numero} />
+            <Ligne
+              terme="Validité"
+              valeur={`${dateFr(etablissement.agrement_debut)} → ${dateFr(etablissement.agrement_fin)}`}
+            />
+          </dl>
+          {/* L'échéance décide du droit d'accueillir : elle ne se déduit pas
+              d'une date affichée au milieu d'autres. */}
+          {agrementExpire && (
+            <p className="mt-2 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-800">
+              Agrément expiré — cette structure n&apos;a plus le droit d&apos;accueillir,
+              et son compte est limité à la mise à jour de son agrément.
+            </p>
+          )}
+          {!etablissement.agrement_fin && (
+            <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-900">
+              Date de fin non renseignée : l&apos;agrément est traité comme non
+              vérifiable, et aucun créneau ne peut être ouvert.
+            </p>
+          )}
+
+          <h3 className="mt-5 text-sm font-semibold text-liams-navy">
+            Responsabilité civile
+          </h3>
+          <dl className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <Ligne terme="Assureur" valeur={etablissement.assurance_assureur} />
+            <Ligne terme="N° de police" valeur={etablissement.assurance_numero} />
+            <Ligne
+              terme="Échéance"
+              valeur={dateFr(etablissement.assurance_expiration)}
+            />
+          </dl>
+
+          <h3 className="mt-5 text-sm font-semibold text-liams-navy">
+            Sections déclarées
+          </h3>
+          {(tranches ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">Aucune section déclarée.</p>
+          ) : (
+            <ul className="mt-2 flex flex-col gap-1 text-sm">
+              {(tranches ?? []).map((t) => (
+                <li key={t.id} className="text-gray-700">
+                  <span className="text-liams-navy">{t.libelle || "Sans nom"}</span> —
+                  de {t.age_min_mois} à {t.age_max_mois} mois ·{" "}
+                  {t.places_ouvertes} place{t.places_ouvertes > 1 ? "s" : ""} ouverte
+                  {t.places_ouvertes > 1 ? "s" : ""} sur {t.places_agreees} agréée
+                  {t.places_agreees > 1 ? "s" : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <p className="text-sm text-gray-500">
         Statut global casier :{" "}
