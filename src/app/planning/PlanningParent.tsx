@@ -433,6 +433,11 @@ export async function PlanningParent({
     note_moyenne: p.note_moyenne,
     badges: (p.professional_badges ?? []).map((b: { badge_code: string }) => b.badge_code),
     est_etablissement: estEtablissement.has(p.user_id),
+    // Un établissement ne se déplace jamais ; pour les autres, c'est le lieu
+    // d'accueil déclaré depuis la 0019 qui le dit.
+    se_deplace:
+      !estEtablissement.has(p.user_id) &&
+      (p.lieu_accueil === "domicile_parent" || p.lieu_accueil === "les_deux"),
   }));
 
   // Les badges qu'une structure ne peut pas cocher, et qu'elle satisfait donc

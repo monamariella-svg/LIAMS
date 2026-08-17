@@ -88,6 +88,18 @@ export default async function ProfessionnelPublicPage({
   const nomAffiche =
     [identite?.prenom, identite?.nom].filter(Boolean).join(" ") || "Professionnel";
 
+  // Se déplace-t-il ? Un établissement, jamais. Pour les autres, c'est le lieu
+  // d'accueil déclaré qui le dit — et c'est ce qui décide si son rayon
+  // s'affiche comme une limite ou pas du tout.
+  const { data: fiche } = await supabase
+    .from("etablissements")
+    .select("professional_id")
+    .eq("professional_id", id)
+    .maybeSingle();
+  const seDeplace =
+    fiche === null &&
+    (profile.lieu_accueil === "domicile_parent" || profile.lieu_accueil === "les_deux");
+
   /** Photos et réponses alternées, plutôt qu'un carrousel puis un pavé de
    *  texte. On lit une photo, une réponse, une photo — chaque bloc donne envie
    *  du suivant, et l'ensemble se parcourt au pouce.
@@ -189,6 +201,14 @@ export default async function ProfessionnelPublicPage({
       </div>
 
       <div className="rounded-xl border border-gray-200 p-5 text-sm text-gray-700">
+        {/* En tête de l'encadré : le repère qu'une famille cherche avant de
+            lire les prompts, qui parlent de personnalité et non de parcours. */}
+        {profile.presentation && (
+          <p className="mb-4 whitespace-pre-line text-base leading-relaxed text-liams-navy">
+            {profile.presentation}
+          </p>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           {profile.tarif_horaire && (
             <div>
@@ -196,11 +216,26 @@ export default async function ProfessionnelPublicPage({
               <p className="font-medium">{profile.tarif_horaire} €/h</p>
             </div>
           )}
+          {profile.annees_experience != null && (
+            <div>
+              <span className="text-gray-400">Expérience</span>
+              <p className="font-medium">
+                {profile.annees_experience} an{profile.annees_experience > 1 ? "s" : ""}
+              </p>
+            </div>
+          )}
           {profile.adresse && (
             <div>
-              <span className="text-gray-400">Zone d&apos;intervention</span>
+              {/* Un rayon ne se montre que s'il veut dire quelque chose : il dit
+                  jusqu'où le professionnel se déplace. Chez un établissement ou
+                  chez quelqu'un qui reçoit à son domicile, c'est la famille qui
+                  fait la route, et la distance se lit dans la recherche. */}
+              <span className="text-gray-400">
+                {seDeplace ? "Zone d'intervention" : "Adresse"}
+              </span>
               <p className="font-medium">
-                {profile.adresse} ({profile.rayon_km} km)
+                {profile.adresse}
+                {seDeplace ? ` (jusqu'à ${profile.rayon_km} km)` : ""}
               </p>
             </div>
           )}

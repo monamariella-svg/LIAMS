@@ -109,6 +109,8 @@ export type ProfessionalCandidat = {
   /** Porte une fiche d'établissement. Décide de la lecture des badges qui ne
    *  s'adressent qu'aux personnes. */
   est_etablissement?: boolean;
+  /** Va au domicile des familles. Seul cas où son rayon limite la recherche. */
+  se_deplace?: boolean;
 };
 
 /** Ce professionnel répond-il aux badges demandés.
@@ -182,6 +184,16 @@ function geoCompatible(distance: number | null, candidat: ProfessionalCandidat, 
   if (criteres.trajetDepart && criteres.trajetArrivee) {
     return distance <= couloir;
   }
+
+  // Le rayon d'un professionnel dit jusqu'où *il* se déplace. Chez un
+  // établissement, ou chez quelqu'un qui reçoit à son domicile, il ne veut
+  // rien dire : c'est la famille qui fait la route, et elle seule décide de la
+  // distance qu'elle accepte. L'appliquer quand même rendait une crèche ayant
+  // déclaré 15 km invisible à 20 km, pour une famille prête à venir.
+  if (!candidat.se_deplace) {
+    return criteres.rayonKm == null || distance <= criteres.rayonKm;
+  }
+
   const rayon = Math.min(candidat.rayon_km, criteres.rayonKm ?? candidat.rayon_km);
   return distance <= rayon;
 }

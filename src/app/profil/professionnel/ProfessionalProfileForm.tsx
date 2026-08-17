@@ -58,6 +58,8 @@ export function ProfessionalProfileForm({
   lieuAccueil,
   typesAccueil,
   estEtablissement = false,
+  presentation,
+  anneesExperience,
 }: {
   tarifHoraire: number | null;
   tarifHoraireUrgence: number | null;
@@ -70,12 +72,50 @@ export function ProfessionalProfileForm({
   typesAccueil: string[];
   /** Une structure accueille dans ses murs : le lieu ne se demande pas. */
   estEtablissement?: boolean;
+  presentation: string | null;
+  anneesExperience: number | null;
 }) {
   const [state, formAction, pending] = useActionState(updateProfessionalProfile, undefined);
 
   return (
     <form action={formAction} className="flex flex-col gap-4 rounded-xl border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-liams-navy">Mon profil</h2>
+
+      {/* En tête, avec le tarif et la zone : c'est le premier repère d'une
+          famille qui compare trois fiches. Les prompts viennent après, et
+          parlent d'autre chose — de personnalité, pas de parcours. */}
+      <label className="flex flex-col gap-1 text-sm">
+        {estEtablissement ? "Notre présentation" : "Ma présentation"}
+        <textarea
+          name="presentation"
+          rows={3}
+          maxLength={400}
+          defaultValue={presentation ?? ""}
+          placeholder={
+            estEtablissement
+              ? "Deux ou trois phrases : qui nous sommes, notre projet d'accueil, ce qui nous distingue."
+              : "Deux ou trois phrases : qui vous êtes, votre parcours, votre façon de travailler."
+          }
+          className="rounded-lg border border-gray-300 px-4 py-2"
+        />
+        <span className="text-xs text-gray-500">
+          400 caractères au plus, affichés en tête de votre fiche publique.
+        </span>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm sm:w-64">
+        {estEtablissement
+          ? "Années d'existence de la structure"
+          : "Années d'expérience auprès des enfants"}
+        <input
+          type="number"
+          name="annees_experience"
+          min={0}
+          max={60}
+          defaultValue={anneesExperience ?? ""}
+          className="rounded-lg border border-gray-300 px-4 py-2"
+        />
+      </label>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
