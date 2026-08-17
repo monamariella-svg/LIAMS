@@ -6,6 +6,7 @@ import { BarreProgression } from "@/components/BarreProgression";
 import { IdentiteForm } from "@/components/identite/IdentiteForm";
 import { ParentProfileForm } from "./ParentProfileForm";
 import { AjouterEnfantForm } from "./AjouterEnfantForm";
+import { ModifierEnfantForm, type EnfantModifiable } from "./ModifierEnfantForm";
 import { FicheSanteForm } from "./FicheSanteForm";
 import { ProfilXtraForm } from "./ProfilXtraForm";
 import { SupprimerEnfantButton } from "./SupprimerEnfantButton";
@@ -67,6 +68,17 @@ export default async function ProfilParentPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold">
                 {enfant.prenom}
+                {enfant.date_naissance && (
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    né(e) le{" "}
+                    {new Date(enfant.date_naissance).toLocaleDateString("fr-FR")}
+                  </span>
+                )}
+                {!enfant.date_naissance && (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    Date de naissance manquante
+                  </span>
+                )}
                 {!enfant.enfant_fiche_sante && (
                   <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
                     Fiche santé manquante
@@ -75,6 +87,11 @@ export default async function ProfilParentPage() {
               </h3>
               <SupprimerEnfantButton enfantId={enfant.id} />
             </div>
+
+            {/* Corriger plutôt que supprimer et recréer : la suppression
+                emporte la fiche santé, le profil Xtra et la trace des
+                lectures. */}
+            <ModifierEnfantForm enfant={enfant as EnfantModifiable} />
 
             <FicheSanteForm enfantId={enfant.id} fiche={enfant.enfant_fiche_sante} />
             <ProfilXtraForm enfantId={enfant.id} profil={enfant.enfant_profil_xtra} />
