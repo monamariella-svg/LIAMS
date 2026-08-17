@@ -9,6 +9,7 @@ import {
   type ProfessionalCandidat,
   type PropositionPro,
   type CreneauCalendrier,
+  type EnfantConcerne,
   type CritereRecherche,
 } from "@/lib/matching";
 import { distanceKm } from "@/lib/geo";
@@ -102,7 +103,9 @@ export async function PlanningParent({
     supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
     supabase
       .from("availability_slots")
-      .select("id, professional_id, date, heure_debut, heure_fin, statut")
+      .select(
+        "id, professional_id, date, heure_debut, heure_fin, statut, age_min_mois, age_max_mois, capacite",
+      )
       .gte("date", todayISO()),
     supabase.from("parent_networks").select("professional_id, statut").eq("parent_id", userId),
     // Tous les badges : les manuels alimentent les filtres, mais il faut
@@ -172,9 +175,43 @@ export async function PlanningParent({
   // Prénoms des enfants réservés, pour proposer de n'en retirer qu'un.
   const { data: mesEnfants } = await supabase
     .from("enfants")
-    .select("id, prenom")
+    .select("id, prenom, date_naissance")
     .eq("parent_id", userId);
   const prenomParEnfant = new Map((mesEnfants ?? []).map((e) => [e.id, e.prenom]));
+
+  /** Les enfants pour qui l'on cherche.
+   *
+   * Plusieurs, car une fratrie se place le plus souvent ensemble — et parce
+   * qu'un établissement les répartira dans deux sections différentes, ce que
+   * seule une recherche qui les connaît tous les deux peut annoncer.
+   *
+   * Un enfant unique se sélectionne tout seul : le filtre n'apparaît qu'à
+   * partir de deux, et exiger un choix qu'on ne peut pas faire bloquerait la
+   * recherche. */
+  const enfantsDuParent = mesEnfants ?? [];
+  const idsSelectionnes = new Set(
+    (enfantFiltre ? enfantFiltre.split(",") : []).filter(Boolean),
+  );
+  const enfantsRetenus =
+    idsSelectionnes.size > 0
+      ? enfantsDuParent.filter((e) => idsSelectionnes.has(e.id))
+      : enfantsDuParent.length === 1
+        ? enfantsDuParent
+        : [];
+
+  const enfantsPourRecherche: EnfantConcerne[] = enfantsRetenus
+    .filter((e) => e.date_naissance)
+    .map((e) => ({ id: e.id, dateNaissance: e.date_naissance as string }));
+
+  /** Le lien qui ajoute ou retire un enfant de la sélection, sans perdre les
+   *  autres — cocher son cadet ne doit pas décocher son aîné. */
+  const lienBascule = (id: string) => {
+    const suivants = new Set(enfantsRetenus.map((e) => e.id));
+    if (suivants.has(id)) suivants.delete(id);
+    else suivants.add(id);
+    const liste = [...suivants];
+    return liste.length > 0 ? `/planning?enfant=${liste.join(",")}` : "/planning";
+  };
 
   /** Une réservation concerne-t-elle l'enfant filtré ?
    *
@@ -182,7 +219,9 @@ export async function PlanningParent({
    * réservations n'en déclare aucun : on la montre plutôt que de la cacher,
    * une garde oubliée du calendrier étant pire qu'une garde mal rangée. */
   const concerneEnfant = (ids: string[]) =>
-    !enfantFiltre || ids.length === 0 || ids.includes(enfantFiltre);
+    idsSelectionnes.size === 0 ||
+    ids.length === 0 ||
+    ids.some((id) => idsSelectionnes.has(id));
 
   const prenomsDe = (ids: string[]) =>
     ids.map((id) => prenomParEnfant.get(id)).filter(Boolean).join(", ");
@@ -338,10 +377,25 @@ export async function PlanningParent({
   // ---- Propositions de profils, calculées par besoin (matching proactif) ----
   const today = todayISO();
 
+  // Les places encore libres, réservations décomptées. Le statut d'un créneau
+  // ne fait plus autorité depuis la 0021 : un créneau complet reste « libre »
+  // en base, et la recherche le proposait donc jusqu'ici — la demande partait,
+  // puis se faisait refuser faute de place.
+  const idsCreneaux = (tousCreneaux ?? []).map((c) => c.id as string);
+  const { data: restantes } = idsCreneaux.length
+    ? await supabase.rpc("places_restantes_creneaux", { p_slot_ids: idsCreneaux })
+    : { data: [] };
+  const restantesParSlot = new Map<string, number>(
+    ((restantes ?? []) as { slot_id: string; restantes: number }[]).map((r) => [
+      r.slot_id,
+      r.restantes,
+    ]),
+  );
+
   const creneauxParPro = new Map<string, CreneauCalendrier[]>();
   for (const creneau of tousCreneaux ?? []) {
     const liste = creneauxParPro.get(creneau.professional_id) ?? [];
-    liste.push(creneau);
+    liste.push({ ...creneau, placesRestantes: restantesParSlot.get(creneau.id) ?? null });
     creneauxParPro.set(creneau.professional_id, liste);
   }
   // Un professionnel qui n'accepte pas ce type d'accueil n'a pas à être
@@ -416,6 +470,7 @@ export async function PlanningParent({
         couloirTrajetKm: rayonKm,
         badgesRequis: parentProfile?.badges_souhaites ?? [],
         badgesSansObjetPourEtablissement,
+        enfants: enfantsPourRecherche,
       }
     : {
         // À défaut de ville renseignée, on retombe sur l'adresse du profil.
@@ -428,6 +483,7 @@ export async function PlanningParent({
         rayonKm,
         badgesRequis: parentProfile?.badges_souhaites ?? [],
         badgesSansObjetPourEtablissement,
+        enfants: enfantsPourRecherche,
       };
 
   // Les pros du réseau passent devant, sans jamais exclure les autres profils.
@@ -640,24 +696,17 @@ export async function PlanningParent({
         {/* Un parent de deux enfants lit un calendrier où tout se mélange :
             l'un chez une assistante maternelle le matin, l'autre récupéré le
             soir. Le filtre rend chaque planning lisible séparément. */}
-        {(mesEnfants ?? []).length > 1 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Link
-              href="/planning"
-              className={`rounded-full px-3 py-1 text-xs ${
-                enfantFiltre
-                  ? "border border-gray-300 text-gray-600 hover:border-liams-navy"
-                  : "bg-liams-navy text-white"
-              }`}
-            >
-              Tous les enfants
-            </Link>
-            {(mesEnfants ?? []).map((enfant) => (
+        {enfantsDuParent.length > 1 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {/* Plusieurs enfants se cochent ensemble : une fratrie se place le
+                plus souvent au même endroit, et c'est précisément ce qu'il faut
+                savoir pour lui chercher deux places. */}
+            {enfantsDuParent.map((enfant) => (
               <Link
                 key={enfant.id}
-                href={`/planning?enfant=${enfant.id}`}
+                href={lienBascule(enfant.id)}
                 className={`rounded-full px-3 py-1 text-xs ${
-                  enfantFiltre === enfant.id
+                  idsSelectionnes.has(enfant.id)
                     ? "bg-liams-navy text-white"
                     : "border border-gray-300 text-gray-600 hover:border-liams-navy"
                 }`}
@@ -665,6 +714,11 @@ export async function PlanningParent({
                 {enfant.prenom}
               </Link>
             ))}
+            {idsSelectionnes.size > 0 && (
+              <Link href="/planning" className="text-xs text-gray-500 underline">
+                Tout afficher
+              </Link>
+            )}
           </div>
         )}
         <p className="mb-3 text-xs text-gray-500">
@@ -698,7 +752,36 @@ export async function PlanningParent({
         </p>
       </section>
 
-      {groupesPropositions.length > 0 && (
+      {/* Sans savoir pour qui, on ne peut pas proposer : les créneaux d'un
+          établissement sont ouverts par section, et l'âge décide. Mieux vaut le
+          dire que présenter une liste fausse dont rien n'indiquerait qu'elle
+          l'est. */}
+      {enfantsRetenus.length === 0 && enfantsDuParent.length > 1 && (
+        <section className="rounded-xl border-2 border-liams-orange/40 bg-liams-orange/5 p-6">
+          <h2 className="text-base font-semibold text-liams-navy">
+            Pour qui cherchez-vous ?
+          </h2>
+          <p className="mt-2 text-sm text-gray-700">
+            Choisissez un ou plusieurs enfants ci-dessus. Les établissements
+            accueillent par tranches d&apos;âge : une place libre chez les grands
+            n&apos;est pas une place pour un bébé, et nous ne voulons pas vous
+            proposer un rendez-vous qui serait refusé.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {enfantsDuParent.map((enfant) => (
+              <Link
+                key={enfant.id}
+                href={lienBascule(enfant.id)}
+                className="rounded-full bg-liams-navy px-4 py-1.5 text-xs font-medium text-white hover:opacity-90"
+              >
+                {enfant.prenom}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {enfantsRetenus.length > 0 && groupesPropositions.length > 0 && (
         <section className="rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-liams-navy">
             Profils proposés pour vos besoins
@@ -719,15 +802,87 @@ export async function PlanningParent({
                   </p>
                 ) : (
                   <div className="mt-2 flex flex-col gap-2">
-                    {groupe.propositions.map((prop) =>
-                      carteProfessionnel(
-                        prop.candidat.user_id,
-                        prop.distanceKm,
-                        prop.candidat.note_moyenne,
-                        { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
-                        `${groupe.cle}-${prop.candidat.user_id}`,
-                      ),
-                    )}
+                    {groupe.propositions.map((prop) => {
+                      const eligibles = prop.couvertures.map(
+                        (c) => prenomParEnfant.get(c.enfantId) ?? "cet enfant",
+                      );
+                      // Aucune section à leur âge : ce n'est pas une question
+                      // de place, et aucune décision du parent n'y changera
+                      // rien.
+                      const horsAge = prop.enfantsNonCouverts.map(
+                        (id) => prenomParEnfant.get(id) ?? "cet enfant",
+                      );
+                      // Les jours où tout le monde ne tient pas. Détaillés
+                      // plutôt que résumés : renoncer à un professionnel qui
+                      // convient neuf mardis sur dix à cause du dixième serait
+                      // perdre une solution pour presque rien.
+                      const joursIncomplets = prop.placesParDate.filter(
+                        (d) => d.places < eligibles.length,
+                      );
+                      const joursComplets =
+                        prop.placesParDate.length - joursIncomplets.length;
+                      // Chacun sa section : leurs créneaux possibles ne se
+                      // recoupent pas du tout.
+                      const separes =
+                        prop.couvertures.length > 1 &&
+                        prop.couvertures.every(
+                          (c, _, toutes) =>
+                            !toutes.some(
+                              (autre) =>
+                                autre.enfantId !== c.enfantId &&
+                                autre.creneaux.some((x) =>
+                                  c.creneaux.some((y) => y.id === x.id),
+                                ),
+                            ),
+                        );
+
+                      return (
+                        <div key={`${groupe.cle}-${prop.candidat.user_id}`}>
+                          {carteProfessionnel(
+                            prop.candidat.user_id,
+                            prop.distanceKm,
+                            prop.candidat.note_moyenne,
+                            { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
+                            `carte-${groupe.cle}-${prop.candidat.user_id}`,
+                          )}
+                          {enfantsRetenus.length > 1 && (
+                            <p className="mt-1 flex flex-col gap-0.5 pl-1 text-xs">
+                              {eligibles.length > 0 && joursComplets > 0 && (
+                                <span className="text-liams-teal">
+                                  {eligibles.join(" et ")}
+                                  {separes ? " — chacun dans sa section" : " — ensemble"}
+                                  {joursIncomplets.length > 0 &&
+                                    ` · ${joursComplets} date${joursComplets > 1 ? "s" : ""} sur ${prop.placesParDate.length}`}
+                                </span>
+                              )}
+                              {joursIncomplets.length > 0 && (
+                                <span className="font-medium text-red-600">
+                                  {joursIncomplets.length === prop.placesParDate.length
+                                    ? "Aucune place sur les créneaux souhaités pour tous vos enfants : "
+                                    : `${joursIncomplets.length} date${joursIncomplets.length > 1 ? "s" : ""} sans place pour tous — `}
+                                  {joursIncomplets
+                                    .slice(0, 3)
+                                    .map(
+                                      (d) =>
+                                        `${formatDateLabel(d.date)} (${d.places} place${d.places > 1 ? "s" : ""})`,
+                                    )
+                                    .join(", ")}
+                                  {joursIncomplets.length > 3 &&
+                                    `, et ${joursIncomplets.length - 3} autre${joursIncomplets.length - 3 > 1 ? "s" : ""}`}
+                                  . À vous de désigner qui la prend.
+                                </span>
+                              )}
+                              {horsAge.length > 0 && (
+                                <span className="text-red-600">
+                                  Aucune section à l&apos;âge de{" "}
+                                  {horsAge.join(" ni de ")}.
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
