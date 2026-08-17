@@ -23,6 +23,7 @@ export type RecurrenceExistante = {
   types_accueil?: string[];
   lieu_accueil?: string | null;
   tranche_id?: string | null;
+  enfant_ids?: string[] | null;
   /** Nombre de créneaux de la série qu'une famille a réservés. Décide de la
    * question posée avant suppression. */
   reservations?: number;
@@ -72,6 +73,7 @@ export function CreneauRecurrentForm({
   variante = "creneaux",
   lieuAccueilProfil,
   tranches = [],
+  enfants = [],
 }: {
   recurrence?: RecurrenceExistante;
   variante?: VarianteRecurrence;
@@ -81,6 +83,9 @@ export function CreneauRecurrentForm({
   /** Sections de l'établissement. Vide pour un indépendant et pour un parent,
    * qui n'en ont pas. */
   tranches?: TrancheOption[];
+  /** Les enfants du parent, pour dire qui ce besoin concerne. Vide côté
+   * professionnel : un créneau ouvert n'a personne à nommer. */
+  enfants?: { id: string; prenom: string }[];
 }) {
   const [state, formAction, pending] = useActionState(
     recurrence ? ACTIONS[variante].modifier : ACTIONS[variante].creer,
@@ -105,6 +110,35 @@ export function CreneauRecurrentForm({
       className="mt-4 flex flex-col gap-3"
     >
       {recurrence && <input type="hidden" name="recurrence_id" value={recurrence.id} />}
+
+      {/* Pour qui. En tête, parce que c'est ce qui décide de tout le reste :
+          l'âge détermine les sections susceptibles d'accueillir, et le nombre
+          d'enfants le nombre de places à trouver. */}
+      {enfants.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-gray-700">Pour</p>
+          <div className="mt-1 flex flex-wrap gap-3">
+            {enfants.map((enfant) => (
+              <label key={enfant.id} className="flex items-center gap-1 text-sm">
+                <input
+                  type="checkbox"
+                  name="enfant_ids"
+                  value={enfant.id}
+                  defaultChecked={
+                    // Un seul enfant : la question ne se pose pas, on coche pour
+                    // lui. Une série ancienne n'en nomme aucun — la 0039 les a
+                    // laissées telles quelles — et se rouvre donc décochée.
+                    enfants.length === 1 ||
+                    (recurrence?.enfant_ids ?? []).includes(enfant.id)
+                  }
+                />
+                {enfant.prenom}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <p className="text-xs font-medium text-gray-700">Se répète le</p>
         <div className="mt-1 flex flex-wrap gap-3">
