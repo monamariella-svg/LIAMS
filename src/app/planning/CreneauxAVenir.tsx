@@ -123,6 +123,37 @@ function FormulaireCreneau({
     <form action={formAction} className="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
       <input type="hidden" name="slot_id" value={creneau.id} />
 
+      {/* L'horaire se corrige ici plutôt qu'en supprimant le créneau : une
+          crèche qui ferme à 17h au lieu de 18h n'a pas à annuler ses gardes
+          pour le dire. Élargir est toujours possible ; raccourcir un créneau
+          réservé est refusé par le serveur, qui explique pourquoi. */}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          De
+          <input
+            type="time"
+            name="heure_debut"
+            defaultValue={creneau.heure_debut.slice(0, 5)}
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          À
+          <input
+            type="time"
+            name="heure_fin"
+            defaultValue={creneau.heure_fin.slice(0, 5)}
+            className="rounded-lg border border-gray-300 px-3 py-2"
+          />
+        </label>
+        {placesPrises > 0 && (
+          <span className="pb-2 text-xs text-gray-500">
+            {placesPrises} garde{placesPrises > 1 ? "s" : ""} réservée
+            {placesPrises > 1 ? "s" : ""} : vous pouvez élargir, pas raccourcir.
+          </span>
+        )}
+      </div>
+
       {tranches.length > 0 && (
         <label className="flex flex-col gap-1 text-sm">
           Section accueillie
