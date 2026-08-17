@@ -258,6 +258,11 @@ export async function PlanningParent({
             {prenomsDe(enfantIds)}
           </span>
         )}
+        {/* Qui garde l'enfant. Un calendrier qui dit « confirmée » sans dire
+            chez qui oblige à ouvrir chaque case pour s'en souvenir. */}
+        <span className="text-[10px] text-gray-600">
+          {nomParPro.get(professionalId) ?? "Professionnel"}
+        </span>
         <Link
           href={`/reseau/${professionalId}`}
           className="text-[10px] underline opacity-70 hover:opacity-100"
@@ -300,6 +305,9 @@ export async function PlanningParent({
               {prenomsDe(enfantsDemande)}
             </span>
           )}
+          <span className="text-[10px] text-gray-600">
+            {nomParPro.get(demande.professional_id) ?? "Professionnel"}
+          </span>
           <Link
             href={`/reseau/${demande.professional_id}`}
             className="text-[10px] underline opacity-70 hover:opacity-100"
@@ -327,12 +335,17 @@ export async function PlanningParent({
       statut: rec.statut === "actif" ? "libre" : "libre_urgence",
     });
     footers[id] = (
-      <Link
-        href={`/reseau/${rec.professional_id}`}
-        className="text-[10px] underline opacity-70 hover:opacity-100"
-      >
-        Gérer
-      </Link>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] text-gray-600">
+          {nomParPro.get(rec.professional_id) ?? "Professionnel"}
+        </span>
+        <Link
+          href={`/reseau/${rec.professional_id}`}
+          className="text-[10px] underline opacity-70 hover:opacity-100"
+        >
+          Gérer
+        </Link>
+      </div>
     );
   }
 

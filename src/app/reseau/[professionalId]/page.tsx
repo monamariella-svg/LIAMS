@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { NavigationBas } from "@/components/NavigationBas";
 import { requireUser } from "@/lib/auth";
@@ -213,6 +214,17 @@ export default async function PlanningProfessionnelPage({
       />
 
       <RecurrenceForm professionalId={professionalId} enfants={enfants ?? []} />
+
+      {/* Une demande envoyée appelle souvent la suivante — un autre enfant, un
+          autre jour, une garde d'urgence. Repasser par le tableau de bord pour
+          y revenir fait perdre le fil ; le choix du type d'accueil est à un
+          clic. */}
+      <Link
+        href="/recherche"
+        className="self-start rounded-full border border-liams-navy px-6 py-2.5 text-sm font-medium text-liams-navy transition-colors hover:bg-liams-navy hover:text-white"
+      >
+        Faire une nouvelle demande
+      </Link>
 
       <NavigationBas />
     </div>

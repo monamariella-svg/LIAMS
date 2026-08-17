@@ -137,7 +137,10 @@ export default async function PlanningPage({
   const idsSlots = (slots ?? []).map((s) => s.id as string);
   const enfantsParSlot = new Map<string, Set<string>>();
 
-  if (tranches.length === 0 && idsSlots.length > 0) {
+  // Toujours, et non pour les seuls indépendants. Une crèche qui n'a déclaré
+  // qu'une section n'a rien à filtrer par section — elle se retrouvait alors
+  // sans aucun filtre, alors que ses enfants accueillis en feraient un utile.
+  if (idsSlots.length > 0) {
     const [{ data: urgencesConfirmees }, { data: lignesAcceptees }] = await Promise.all([
       supabase
         .from("urgent_bookings")
@@ -400,13 +403,16 @@ export default async function PlanningPage({
         {/* Une crèche ouvre plusieurs sections aux mêmes heures : sans ce
             filtre, une semaine se lit comme une pile. Un indépendant n'a pas de
             sections mais quelques enfants, et c'est par eux qu'il se repère. */}
+        {/* Les deux filtres peuvent coexister : une crèche à trois sections et
+            douze enfants a besoin des deux, et une crèche à section unique n'a
+            que les enfants pour se repérer. Chacun n'apparaît qu'à partir de
+            deux entrées — en dessous, la pastille serait décorative. */}
         {(tranches.length > 1 || (enfantsAccueillis ?? []).length > 1) && (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-gray-500">
-              {tranches.length > 1 ? "Voir la section" : "Voir l'enfant"}
-            </span>
-            {tranches.length > 1
-              ? tranches.map((t) => (
+          <div className="mb-3 flex flex-col gap-2">
+            {tranches.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">Section</span>
+                {tranches.map((t) => (
                   <Link
                     key={t.id}
                     href={section === t.id ? "/planning" : `/planning?section=${t.id}`}
@@ -418,8 +424,14 @@ export default async function PlanningPage({
                   >
                     {t.libelle || `${t.age_min_mois}–${t.age_max_mois} mois`}
                   </Link>
-                ))
-              : (enfantsAccueillis ?? []).map((e) => (
+                ))}
+              </div>
+            )}
+
+            {(enfantsAccueillis ?? []).length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">Enfant</span>
+                {(enfantsAccueillis ?? []).map((e) => (
                   <Link
                     key={e.id}
                     href={enfant === e.id ? "/planning" : `/planning?enfant=${e.id}`}
@@ -432,8 +444,11 @@ export default async function PlanningPage({
                     {e.prenom}
                   </Link>
                 ))}
+              </div>
+            )}
+
             {(section || enfant) && (
-              <Link href="/planning" className="text-xs text-gray-500 underline">
+              <Link href="/planning" className="self-start text-xs text-gray-500 underline">
                 Tout afficher
               </Link>
             )}

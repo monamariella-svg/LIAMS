@@ -109,43 +109,49 @@ const ICONES: Record<string, ReactNode> = {
       <path {...T} d="M12 7.5V12l3 2" />
     </>
   ),
-  // Le fauteuil, dessiné de profil : la roue et l'assise suffisent à le
-  // reconnaître à seize pixels.
+  // Une rampe d'accès plutôt qu'un fauteuil : à dix-sept pixels, la grande
+  // roue d'un fauteuil ne laisse voir qu'un rond.
   locaux_pmr: (
     <>
-      <circle {...T} cx="11" cy="17" r="4.5" />
-      <circle {...T} cx="12.5" cy="4.5" r="1.5" />
-      <path {...T} d="M12.5 8v5h4l2.5 4" />
+      <path {...T} d="M3 20h18" />
+      <path {...T} d="M4 20 15 7" />
+      <path {...T} d="M15 7h6v13" />
     </>
   ),
+  // Un sapin : le feuillage rond d'un arbre feuillu se lit comme un cercle.
   espace_exterieur: (
     <>
-      <path {...T} d="M12 21v-6" />
-      <path {...T} d="M12 15c-3.5 0-6-2.2-6-5.5S8.5 4 12 4s6 2.2 6 5.5S15.5 15 12 15Z" />
+      <path {...T} d="M12 3 6 12h12L12 3Z" />
+      <path {...T} d="M12 9 7 17h10l-5-8Z" />
+      <path {...T} d="M12 17v4" />
     </>
   ),
+  // Fourchette et couteau, verticaux et écartés : deux traits nets valent
+  // mieux qu'une assiette, qui serait ronde.
   repas_fournis: (
     <>
-      <path {...T} d="M7 3v8m0 0v10M5 3v5a2 2 0 0 0 4 0V3" />
-      <path {...T} d="M17 21V3c-2 1-3 3-3 6s1 3 3 3" />
+      <path {...T} d="M8 3v18" />
+      <path {...T} d="M5.5 3v4a2.5 2.5 0 0 0 5 0V3" />
+      <path {...T} d="M16 21V3l2.5 2.5v6H16" />
     </>
   ),
-  hygiene_fournie: (
-    <>
-      <path {...T} d="M5 7h14l-1.5 5.5A6 6 0 0 1 12 17a6 6 0 0 1-5.5-4.5L5 7Z" />
-      <path {...T} d="M5 7c2-1.5 5-1.5 7 0s5 1.5 7 0" />
-    </>
-  ),
-  // Un soleil bas sur l'horizon : tôt le matin, tard le soir.
+  // Une goutte : forme fermée mais pointue en haut, donc jamais confondue.
+  hygiene_fournie: <path {...T} d="M12 3c4 5 6 7.5 6 10a6 6 0 0 1-12 0c0-2.5 2-5 6-10Z" />,
+  // Une amplitude : deux bornes et une flèche qui les écarte.
   horaires_elargis: (
     <>
-      <path {...T} d="M3 18h18" />
-      <path {...T} d="M7.5 18a4.5 4.5 0 0 1 9 0" />
-      <path {...T} d="M12 6v2.5M6 8.5l1.8 1.8M18 8.5l-1.8 1.8" />
+      <path {...T} d="M4 5v14M20 5v14" />
+      <path {...T} d="M7 12h10" />
+      <path {...T} d="m9 9-3 3 3 3M15 9l3 3-3 3" />
     </>
   ),
+  // Croissant franc et étoile : un croissant seul, en trait, se referme
+  // visuellement en cercle à petite taille.
   accueil_nuit: (
-    <path {...T} d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+    <>
+      <path {...T} d="M18 15A7.5 7.5 0 0 1 9 6a7 7 0 1 0 9 9Z" />
+      <path {...T} d="M18 4v3M16.5 5.5h3" />
+    </>
   ),
   accueil_weekend: (
     <>
@@ -218,7 +224,9 @@ export function BadgeIcone({
       style={{ width: taille, height: taille }}
       className={`flex shrink-0 items-center justify-center rounded-full ${couleurs}`}
     >
-      <svg viewBox="0 0 24 24" width={taille * 0.55} height={taille * 0.55} aria-hidden>
+      {/* 0,62 plutôt que 0,55 : à 32 px de pastille, le glyphe passe de 17 à
+          20 px, et les formes à trois traits cessent de se refermer. */}
+      <svg viewBox="0 0 24 24" width={taille * 0.62} height={taille * 0.62} aria-hidden>
         {icone}
       </svg>
     </span>
