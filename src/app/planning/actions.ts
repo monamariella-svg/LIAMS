@@ -172,7 +172,13 @@ async function genererCreneaux(
   // que rien n'apparaisse au calendrier.
   const { data, error } = await supabase
     .from("availability_slots")
-    .upsert(rows, { onConflict: "professional_id,date,heure_debut", ignoreDuplicates: true })
+    // La section fait partie de la clé depuis la 0041 : une crèche ouvre
+    // plusieurs sections au même horaire, et deux séries pour deux sections ne
+    // sont pas des doublons l'une de l'autre.
+    .upsert(rows, {
+      onConflict: "professional_id,date,heure_debut,tranche_id",
+      ignoreDuplicates: true,
+    })
     .select("id");
 
   return { error, crees: data?.length ?? 0, demandes: rows.length };
@@ -536,6 +542,13 @@ export async function modifierCreneau(
   const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
   const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
   const trancheId = String(formData.get("tranche_id") ?? "") || null;
+  const heureDebut = String(formData.get("heure_debut") ?? "");
+  const heureFin = String(formData.get("heure_fin") ?? "");
+
+  if (!heureDebut || !heureFin) return { error: "Renseignez les horaires." };
+  if (heureFin <= heureDebut) {
+    return { error: "L'heure de fin doit être après l'heure de début." };
+  }
 
   // Réduire la capacité en dessous des places déjà prises reviendrait à
   // déloger une famille sans le lui dire.
@@ -544,7 +557,7 @@ export async function modifierCreneau(
   });
   const { data: creneau } = await supabase
     .from("availability_slots")
-    .select("capacite")
+    .select("capacite, date, heure_debut, heure_fin")
     .eq("id", slotId)
     .eq("professional_id", comptePro)
     .maybeSingle();
@@ -558,6 +571,37 @@ export async function modifierCreneau(
     };
   }
 
+  // Rétrécir un créneau réservé laisserait une famille sans solution sur les
+  // heures retirées, sans que rien ne le lui dise. Élargir n'enlève rien à
+  // personne, et reste donc permis même quand une garde est prise.
+  const retreci =
+    heureDebut > creneau.heure_debut.slice(0, 5) ||
+    heureFin < creneau.heure_fin.slice(0, 5);
+  if (prises > 0 && retreci) {
+    return {
+      error: `Ce créneau porte ${prises} réservation(s) de ${creneau.heure_debut.slice(0, 5)} à ${creneau.heure_fin.slice(0, 5)} : vous pouvez l'élargir, pas le raccourcir. Annulez d'abord la garde concernée, ou prévenez la famille.`,
+    };
+  }
+
+  // Un autre créneau de la même section au même horaire : la contrainte de la
+  // 0041 le refuserait avec un message que personne ne peut interpréter.
+  if (heureDebut !== creneau.heure_debut.slice(0, 5)) {
+    const { data: collision } = await supabase
+      .from("availability_slots")
+      .select("id")
+      .eq("professional_id", comptePro)
+      .eq("date", creneau.date)
+      .eq("heure_debut", heureDebut)
+      .neq("id", slotId)
+      .maybeSingle();
+
+    if (collision) {
+      return {
+        error: "Vous avez déjà un créneau qui commence à cette heure-là ce jour-là.",
+      };
+    }
+  }
+
   const { error } = await supabase
     .from("availability_slots")
     .update({
@@ -565,6 +609,8 @@ export async function modifierCreneau(
       types_accueil: typesAccueil,
       lieu_accueil: lieuAccueil,
       tranche_id: trancheId,
+      heure_debut: heureDebut,
+      heure_fin: heureFin,
     })
     .eq("id", slotId)
     .eq("professional_id", comptePro);
