@@ -93,6 +93,10 @@ export default async function RechercheUrgencePage() {
             "user_id, tarif_horaire, tarif_horaire_urgence, adresse, latitude, longitude, type_professionnel, note_moyenne, nombre_avis, professional_badges(badge_code, statut)",
           )
           .in("user_id", idsPros)
+          // Une fiche masquée ne se propose plus, y compris dans l'urgence —
+          // c'est même là qu'un profil douteux serait le plus dommageable, une
+          // famille pressée n'ayant pas le loisir de vérifier.
+          .eq("masque", false)
       : Promise.resolve({ data: [] }),
     idsPros.length
       ? supabase.from("identites").select("user_id, prenom, nom").in("user_id", idsPros)

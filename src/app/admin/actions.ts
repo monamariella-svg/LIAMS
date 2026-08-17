@@ -4,6 +4,94 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
 
+/** Classer un signalement sans masquer la fiche. */
+export async function traiterSignalement(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const signalementId = String(formData.get("signalement_id") ?? "");
+  const statut = String(formData.get("statut") ?? "traite");
+  if (!signalementId) return;
+
+  await supabase
+    .from("signalements")
+    .update({
+      statut: statut === "rejete" ? "rejete" : "traite",
+      traite_le: new Date().toISOString(),
+      traite_par: user.id,
+    })
+    .eq("id", signalementId);
+
+  revalidatePath("/admin/signalements");
+}
+
+/** Retirer une fiche de la recherche, et le dire à qui elle appartient.
+ *
+ * Le professionnel est prévenu : découvrir par soi-même qu'on ne reçoit plus
+ * aucune demande, sans savoir pourquoi, est la pire façon de l'apprendre. Le
+ * motif exact reste entre l'équipe et lui — il est écrit sur la fiche, pas dans
+ * l'email, pour qu'il faille échanger plutôt que se contenter d'un verdict. */
+export async function masquerProfil(formData: FormData) {
+  const { supabase, user } = await requireAdmin();
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  const signalementId = String(formData.get("signalement_id") ?? "");
+  const motif = String(formData.get("motif") ?? "").trim();
+  if (!professionalId || !motif) return;
+
+  await supabase
+    .from("professional_profiles")
+    .update({
+      masque: true,
+      masque_le: new Date().toISOString(),
+      masque_motif: motif,
+    })
+    .eq("user_id", professionalId);
+
+  if (signalementId) {
+    await supabase
+      .from("signalements")
+      .update({ statut: "traite", traite_le: new Date().toISOString(), traite_par: user.id })
+      .eq("id", signalementId);
+  }
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Votre fiche est temporairement masquée",
+    `<p>Votre fiche ne s'affiche plus aux familles pour le moment, à la suite d'un
+      signalement que nous examinons.</p>
+     <p>Vos gardes en cours ne sont pas annulées et vos conversations restent
+      ouvertes. Écrivez-nous pour que nous en parlions.</p>
+     ${lienVers("/contact", "Nous contacter")}`,
+  );
+
+  revalidatePath("/admin/signalements");
+  revalidatePath(`/professionnels/${professionalId}`);
+}
+
+/** Réafficher une fiche masquée. */
+export async function reafficherProfil(formData: FormData) {
+  const { supabase } = await requireAdmin();
+
+  const professionalId = String(formData.get("professional_id") ?? "");
+  if (!professionalId) return;
+
+  await supabase
+    .from("professional_profiles")
+    .update({ masque: false, masque_le: null, masque_motif: null })
+    .eq("user_id", professionalId);
+
+  await notifierUtilisateur(
+    supabase,
+    professionalId,
+    "Votre fiche est de nouveau visible",
+    "<p>Votre fiche s'affiche de nouveau aux familles. Merci de votre patience.</p>",
+  );
+
+  revalidatePath("/admin/signalements");
+  revalidatePath(`/professionnels/${professionalId}`);
+}
+
 export async function validerDocument(formData: FormData) {
   const { supabase } = await requireAdmin();
 

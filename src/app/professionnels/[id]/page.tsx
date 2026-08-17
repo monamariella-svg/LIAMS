@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BadgeIcone } from "@/components/BadgeIcone";
 import { NavigationBas } from "@/components/NavigationBas";
 import { demanderMiseEnRelation } from "../../messages/actions";
+import { SignalerProfil } from "./SignalerProfil";
 
 export default async function ProfessionnelPublicPage({
   params,
@@ -26,6 +27,22 @@ export default async function ProfessionnelPublicPage({
     ]);
 
   if (!profile) notFound();
+
+  // Masquée par décision d'un administrateur : la fiche n'est plus consultable,
+  // sauf par son titulaire — qui doit pouvoir constater son état — et par
+  // l'admin. On ne dit pas pourquoi ici : le motif regarde le professionnel,
+  // pas les visiteurs.
+  const { data: visiteur } = authData.user
+    ? await supabase.from("users").select("role").eq("id", authData.user.id).maybeSingle()
+    : { data: null };
+
+  if (
+    profile.masque &&
+    authData.user?.id !== id &&
+    visiteur?.role !== "admin"
+  ) {
+    notFound();
+  }
 
   const currentUser = authData.user;
   let currentUserRole: string | null = null;
@@ -224,6 +241,18 @@ export default async function ProfessionnelPublicPage({
           ),
         )}
       </div>
+
+      {profile.masque && currentUser?.id === id && (
+        <p className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-800">
+          Votre fiche est actuellement masquée et n&apos;apparaît plus aux
+          familles. Contactez l&apos;équipe Liams pour en connaître la raison.
+        </p>
+      )}
+
+      {/* Discret, et jamais sur sa propre fiche. La grande majorité des profils
+          n'a rien à se reprocher ; un bouton d'alerte en évidence sous chacun
+          installerait une suspicion que rien ne justifie. */}
+      {currentUser && currentUser.id !== id && <SignalerProfil cibleId={id} />}
 
       {/* Un visiteur non connecté n'a pas de tableau de bord : on le ramène
           à l'accueil plutôt que vers une page qui le renverrait au login. */}
