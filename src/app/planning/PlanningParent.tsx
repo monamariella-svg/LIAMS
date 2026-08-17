@@ -493,18 +493,42 @@ export async function PlanningParent({
     return [...duReseau, ...horsReseau].slice(0, 4);
   };
 
-  type GroupePropositions = { cle: string; titre: string; propositions: PropositionPro[] };
+  type GroupePropositions = {
+    cle: string;
+    titre: string;
+    propositions: PropositionPro[];
+    enfants: EnfantConcerne[];
+  };
   const groupesPropositions: GroupePropositions[] = [];
+
+  /** Les enfants d'un besoin donné.
+   *
+   * Le besoin le dit lui-même depuis la 0039, et c'est lui qui fait foi : « les
+   * mardis pour Léa » n'est pas la même demande que « les mardis pour les
+   * deux ». Les besoins déclarés avant n'en nomment aucun ; pour ceux-là
+   * seulement, on retombe sur les enfants cochés à l'écran, faute de mieux. */
+  const enfantsDuBesoin = (ids: string[] | null | undefined): EnfantConcerne[] => {
+    const retenus = (ids ?? []).length > 0 ? new Set(ids) : null;
+    return enfantsDuParent
+      .filter((e) => (retenus ? retenus.has(e.id) : enfantsRetenus.some((r) => r.id === e.id)))
+      .filter((e) => e.date_naissance)
+      .map((e) => ({ id: e.id, dateNaissance: e.date_naissance as string }));
+  };
 
   for (const rec of besoinRecurrences ?? []) {
     const debut = rec.date_debut > today ? rec.date_debut : today;
     const dates = computeRecurringDates(debut, rec.date_fin, rec.jours);
     if (dates.length === 0) continue;
+    const enfantsDeLaSerie = enfantsDuBesoin(rec.enfant_ids);
     groupesPropositions.push({
       cle: `serie-${rec.id}`,
       titre: `Tous les ${rec.jours.map((j: number) => JOURS_SEMAINE[j]).join(", ")} ${rec.heure_debut.slice(0, 5)}–${rec.heure_fin.slice(0, 5)}`,
+      enfants: enfantsDeLaSerie,
       propositions: prioriserReseau(
-        proposerPourBesoin(candidats, dates, rec.heure_debut, rec.heure_fin, criteresParent),
+        proposerPourBesoin(candidats, dates, rec.heure_debut, rec.heure_fin, {
+          ...criteresParent,
+          enfants: enfantsDeLaSerie,
+        }),
       ),
     });
   }
@@ -513,11 +537,16 @@ export async function PlanningParent({
     (b) => !b.recurrence_id && b.date >= today && !estCouvert(b),
   );
   for (const besoin of ponctuelsNonCouverts.slice(0, 6)) {
+    const enfantsDuPonctuel = enfantsDuBesoin(besoin.enfant_ids);
     groupesPropositions.push({
       cle: `besoin-${besoin.id}`,
       titre: `${JOURS_SEMAINE[isoWeekday(besoin.date)]} ${formatDateLabel(besoin.date)} ${besoin.heure_debut.slice(0, 5)}–${besoin.heure_fin.slice(0, 5)}`,
+      enfants: enfantsDuPonctuel,
       propositions: prioriserReseau(
-        proposerPourBesoin(candidats, [besoin.date], besoin.heure_debut, besoin.heure_fin, criteresParent),
+        proposerPourBesoin(candidats, [besoin.date], besoin.heure_debut, besoin.heure_fin, {
+          ...criteresParent,
+          enfants: enfantsDuPonctuel,
+        }),
       ),
     });
   }
@@ -738,6 +767,7 @@ export async function PlanningParent({
           slots={slots}
           editable
           addSlotAction={ajouterBesoin}
+          enfants={enfantsDuParent.map((e) => ({ id: e.id, prenom: e.prenom }))}
           typesCreneau={[{ value: "besoin", label: "Besoin de garde" }]}
           statutLabels={{
             libre: "Confirmée",
@@ -756,32 +786,11 @@ export async function PlanningParent({
           établissement sont ouverts par section, et l'âge décide. Mieux vaut le
           dire que présenter une liste fausse dont rien n'indiquerait qu'elle
           l'est. */}
-      {enfantsRetenus.length === 0 && enfantsDuParent.length > 1 && (
-        <section className="rounded-xl border-2 border-liams-orange/40 bg-liams-orange/5 p-6">
-          <h2 className="text-base font-semibold text-liams-navy">
-            Pour qui cherchez-vous ?
-          </h2>
-          <p className="mt-2 text-sm text-gray-700">
-            Choisissez un ou plusieurs enfants ci-dessus. Les établissements
-            accueillent par tranches d&apos;âge : une place libre chez les grands
-            n&apos;est pas une place pour un bébé, et nous ne voulons pas vous
-            proposer un rendez-vous qui serait refusé.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {enfantsDuParent.map((enfant) => (
-              <Link
-                key={enfant.id}
-                href={lienBascule(enfant.id)}
-                className="rounded-full bg-liams-navy px-4 py-1.5 text-xs font-medium text-white hover:opacity-90"
-              >
-                {enfant.prenom}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {enfantsRetenus.length > 0 && groupesPropositions.length > 0 && (
+      {/* Plus de « pour qui cherchez-vous ? » : depuis la 0039 le besoin le dit
+          lui-même, et le filtre du haut est redevenu ce qu'il aurait toujours
+          dû être — un moyen de lire son calendrier, pas de déclarer une
+          intention. */}
+      {groupesPropositions.length > 0 && (
         <section className="rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-liams-navy">
             Profils proposés pour vos besoins
@@ -794,7 +803,17 @@ export async function PlanningParent({
           <div className="mt-4 flex flex-col gap-5">
             {groupesPropositions.map((groupe) => (
               <div key={groupe.cle}>
-                <h3 className="text-sm font-semibold text-liams-navy">{groupe.titre}</h3>
+                <h3 className="text-sm font-semibold text-liams-navy">
+                  {groupe.titre}
+                  {groupe.enfants.length > 0 && (
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      pour{" "}
+                      {groupe.enfants
+                        .map((e) => prenomParEnfant.get(e.id) ?? "cet enfant")
+                        .join(" et ")}
+                    </span>
+                  )}
+                </h3>
                 {groupe.propositions.length === 0 ? (
                   <p className="mt-1 text-xs text-gray-500">
                     Aucun professionnel disponible pour l&apos;instant — élargissez vos
@@ -845,7 +864,7 @@ export async function PlanningParent({
                             { datesCouvertes: prop.datesCouvertes, totalDates: prop.totalDates },
                             `carte-${groupe.cle}-${prop.candidat.user_id}`,
                           )}
-                          {enfantsRetenus.length > 1 && (
+                          {groupe.enfants.length > 1 && (
                             <p className="mt-1 flex flex-col gap-0.5 pl-1 text-xs">
                               {eligibles.length > 0 && joursComplets > 0 && (
                                 <span className="text-liams-teal">
@@ -896,7 +915,10 @@ export async function PlanningParent({
         variante="besoins"
       />
 
-      <CreneauRecurrentForm variante="besoins" />
+      <CreneauRecurrentForm
+        variante="besoins"
+        enfants={enfantsDuParent.map((e) => ({ id: e.id, prenom: e.prenom }))}
+      />
 
       <details className="rounded-xl border border-gray-200 p-6 [&[open]>summary]:mb-4">
         <summary className="cursor-pointer text-base font-semibold text-liams-navy">

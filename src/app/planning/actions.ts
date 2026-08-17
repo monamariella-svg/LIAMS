@@ -81,6 +81,8 @@ type ChampsRecurrence = {
   typesAccueil: string[];
   lieuAccueil: string | null;
   trancheId: string | null;
+  /** Côté parent seulement : les enfants que ce besoin concerne. */
+  enfantIds: string[];
 };
 
 function lireChampsRecurrence(
@@ -99,6 +101,7 @@ function lireChampsRecurrence(
   const typesAccueil = typesSaisis.length > 0 ? typesSaisis : ["ponctuel"];
   const lieuAccueil = String(formData.get("lieu_accueil") ?? "") || null;
   const trancheId = String(formData.get("tranche_id") ?? "") || null;
+  const enfantIds = formData.getAll("enfant_ids").map(String).filter(Boolean);
 
   if (!heureDebut || !heureFin || !dateDebut || !dateFin || jours.length === 0) {
     return { error: "Choisissez au moins un jour, un horaire et une période." };
@@ -134,6 +137,7 @@ function lireChampsRecurrence(
       typesAccueil,
       lieuAccueil,
       trancheId,
+      enfantIds,
     },
   };
 }
@@ -830,11 +834,19 @@ export async function ajouterBesoin(
     return { error: "L'heure de fin doit être après l'heure de début." };
   }
 
+  // Pour qui : sans cela, on ne sait ni quel âge chercher — un établissement
+  // accueille par sections — ni combien de places il faut trouver.
+  const enfantIds = formData.getAll("enfant_ids").map(String).filter(Boolean);
+  if (enfantIds.length === 0) {
+    return { error: "Indiquez pour quel enfant vous cherchez une garde." };
+  }
+
   const { error } = await supabase.from("besoins_garde").insert({
     parent_id: user.id,
     date,
     heure_debut: heureDebut,
     heure_fin: heureFin,
+    enfant_ids: enfantIds,
   });
 
   if (error) return { error: error.message };
@@ -862,6 +874,10 @@ async function genererBesoins(
     heure_debut: champs.heureDebut,
     heure_fin: champs.heureFin,
     recurrence_id: recurrenceId,
+    // Recopiés sur chaque occurrence : les propositions se calculent besoin par
+    // besoin, et remonter à la série pour savoir de qui il s'agit obligerait à
+    // la joindre partout.
+    enfant_ids: champs.enfantIds,
   }));
 
   return supabase
@@ -879,6 +895,12 @@ export async function ajouterBesoinsRecurrents(
   if ("error" in lu) return { error: lu.error };
   const { champs } = lu;
 
+  // Exigé du côté parent seulement : un créneau ouvert par un professionnel
+  // n'a personne à nommer, un besoin de garde si.
+  if (champs.enfantIds.length === 0) {
+    return { error: "Indiquez pour quel enfant vous cherchez une garde." };
+  }
+
   const { data: recurrence, error: erreurSerie } = await supabase
     .from("besoin_recurrences")
     .insert({
@@ -888,6 +910,7 @@ export async function ajouterBesoinsRecurrents(
       heure_fin: champs.heureFin,
       date_debut: champs.dateDebut,
       date_fin: champs.dateFin,
+      enfant_ids: champs.enfantIds,
     })
     .select("id")
     .single();
@@ -914,6 +937,10 @@ export async function modifierBesoinsRecurrents(
   if ("error" in lu) return { error: lu.error };
   const { champs } = lu;
 
+  if (champs.enfantIds.length === 0) {
+    return { error: "Indiquez pour quel enfant vous cherchez une garde." };
+  }
+
   const { data: recurrence, error: erreurSerie } = await supabase
     .from("besoin_recurrences")
     .update({
@@ -922,6 +949,7 @@ export async function modifierBesoinsRecurrents(
       heure_fin: champs.heureFin,
       date_debut: champs.dateDebut,
       date_fin: champs.dateFin,
+      enfant_ids: champs.enfantIds,
     })
     .eq("id", recurrenceId)
     .eq("parent_id", user.id)

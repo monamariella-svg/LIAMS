@@ -42,6 +42,7 @@ export function WeekCalendar({
     { value: "libre_urgence", label: "Urgence" },
   ],
   tranches = [],
+  enfants = [],
 }: {
   weekStart: string;
   basePath: string;
@@ -65,6 +66,9 @@ export function WeekCalendar({
   /** Sections de l'établissement. Vide pour un indépendant, qui n'en a pas :
    * le sélecteur disparaît alors entièrement. */
   tranches?: TrancheOption[];
+  /** Les enfants du parent, quand ce calendrier sert à déclarer des besoins.
+   * Vide côté professionnel : un créneau ouvert ne nomme personne. */
+  enfants?: { id: string; prenom: string }[];
 }) {
   const [jourOuvert, setJourOuvert] = useState<string | null>(null);
   const noopAction = async () => undefined;
@@ -187,6 +191,23 @@ export function WeekCalendar({
                       ))}
                     </select>
                   )}
+                  {/* Pour quel enfant. Avec un seul, la case est cochée et
+                      la question ne se pose pas ; avec deux, il faut le dire —
+                      l'âge décide des places qu'on pourra proposer. */}
+                  {enfants.map((enfant) => (
+                    <label
+                      key={enfant.id}
+                      className="flex items-center gap-1 text-[11px] text-gray-700"
+                    >
+                      <input
+                        type="checkbox"
+                        name="enfant_ids"
+                        value={enfant.id}
+                        defaultChecked={enfants.length === 1}
+                      />
+                      {enfant.prenom}
+                    </label>
+                  ))}
                   <div className="flex gap-1">
                     <button
                       type="submit"
