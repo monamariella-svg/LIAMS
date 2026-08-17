@@ -17,6 +17,7 @@ export default async function AdminDashboardPage() {
     { data: photos },
     { data: feedbacks },
     { data: demandesBadges },
+    { count: nbSignalements },
   ] = await Promise.all([
     supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "parent"),
     supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "professionnel"),
@@ -32,6 +33,10 @@ export default async function AdminDashboardPage() {
       .select("professional_id, badge_code, demande_le, badges(label)")
       .eq("statut", "en_attente")
       .order("demande_le"),
+    supabase
+      .from("signalements")
+      .select("id", { count: "exact", head: true })
+      .eq("statut", "nouveau"),
   ]);
 
   // Savoir quel badge est demandé sans savoir par qui ne sert à rien.
@@ -82,6 +87,21 @@ export default async function AdminDashboardPage() {
           titre="Vérification des professionnels"
           description="Casiers, diplômes, spécialités"
           accent
+        />
+        {/* Rien n'étant contrôlé avant publication, c'est la seule porte par
+            laquelle rattraper ce qui ne devrait pas être en ligne. Elle porte
+            le compte en attente : une file de modération qu'on ne pense pas à
+            ouvrir ne modère rien. */}
+        <TuileNavigation
+          href="/admin/signalements"
+          icone="verification"
+          titre="Signalements"
+          description={
+            (nbSignalements ?? 0) > 0
+              ? `${nbSignalements} à traiter`
+              : "Aucun signalement en attente"
+          }
+          accent={(nbSignalements ?? 0) > 0}
         />
         <TuileNavigation
           href="/admin/historique"

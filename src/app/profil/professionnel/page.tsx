@@ -222,6 +222,8 @@ export default async function ProfilProfessionnelPage() {
         lieuAccueil={profile?.lieu_accueil ?? "chez_le_pro"}
         typesAccueil={profile?.types_accueil ?? ["ponctuel"]}
         estEtablissement={estEtablissement}
+        presentation={profile?.presentation ?? null}
+        anneesExperience={profile?.annees_experience ?? null}
       />
 
       {/* Discret pour un indépendant, à qui cette page ne s'adresse pas ; mis

@@ -71,12 +71,18 @@ export async function updateProfessionalProfile(
     cadre_exercice: cadreExercice,
     lieu_accueil: lieuAccueil,
     types_accueil: typesAccueilRetenus,
+    presentation: String(formData.get("presentation") ?? "").trim().slice(0, 400) || null,
+    annees_experience: Number(formData.get("annees_experience") ?? NaN) >= 0
+      ? Math.min(60, Number(formData.get("annees_experience")))
+      : null,
     ...(coords && { latitude: coords.latitude, longitude: coords.longitude }),
   });
 
   if (error) return { error: error.message };
 
   revalidatePath("/profil/professionnel");
+  // La présentation et l'expérience s'affichent sur la fiche publique.
+  revalidatePath(`/professionnels/${user.id}`);
   return { success: true };
 }
 
