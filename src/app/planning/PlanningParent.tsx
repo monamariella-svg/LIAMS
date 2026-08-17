@@ -100,7 +100,14 @@ export async function PlanningParent({
       .in("statut", ["en_attente", "actif"])
       .order("created_at"),
     supabase.from("parent_profiles").select("*").eq("user_id", userId).maybeSingle(),
-    supabase.from("professional_profiles").select("*, professional_badges(badge_code)"),
+    // Les fiches masquées ne sont plus proposées. Elles restent lisibles dans
+    // une conversation en cours et dans le réseau : masquer n'est pas
+    // supprimer, et une famille dont l'enfant est accueilli demain n'a pas à
+    // perdre le contact du jour au lendemain.
+    supabase
+      .from("professional_profiles")
+      .select("*, professional_badges(badge_code)")
+      .eq("masque", false),
     supabase
       .from("availability_slots")
       .select(

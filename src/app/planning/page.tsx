@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   compteProfessionnelActif,
   refuserSiAgrementExpire,
@@ -32,10 +33,11 @@ export default async function PlanningPage({
     type?: string;
     tri?: string;
     depuis?: string;
+    section?: string;
   }>;
 }) {
   const { supabase, user, role } = await requireUserParmi(["professionnel", "parent"]);
-  const { week, annule, enfant, type, tri, depuis } = await searchParams;
+  const { week, annule, enfant, type, tri, depuis, section } = await searchParams;
   const weekStart = startOfWeek(week || todayISO());
 
   if (role === "parent") {
@@ -122,6 +124,61 @@ export default async function PlanningPage({
     : { data: [] };
 
   const tranches = (lignesTranches ?? []) as TrancheOption[];
+
+  // ---- Lire son planning par section, ou par enfant ----------------------
+  //
+  // Un calendrier de crèche mélange trois sections aux mêmes heures depuis la
+  // 0041 : sans filtre, une semaine est illisible. Un indépendant, lui, n'a pas
+  // de sections mais quelques enfants, et c'est par eux qu'il se repère.
+  //
+  // Les enfants ne se lisent pas sur le créneau — c'est la réservation qui les
+  // porte, depuis la 0020. Il faut donc remonter les trois formes de
+  // réservation pour savoir qui est attendu où.
+  const idsSlots = (slots ?? []).map((s) => s.id as string);
+  const enfantsParSlot = new Map<string, Set<string>>();
+
+  if (tranches.length === 0 && idsSlots.length > 0) {
+    const [{ data: urgencesConfirmees }, { data: lignesAcceptees }] = await Promise.all([
+      supabase
+        .from("urgent_bookings")
+        .select("slot_id, enfant_ids")
+        .in("slot_id", idsSlots)
+        .in("statut", ["en_attente", "confirme"]),
+      supabase
+        .from("demande_creneau_lignes")
+        .select("slot_id, demandes_creneaux!inner(enfant_ids)")
+        .in("slot_id", idsSlots)
+        .in("statut", ["propose", "accepte"]),
+    ]);
+
+    const noter = (slotId: string, ids: string[] | null) => {
+      const connus = enfantsParSlot.get(slotId) ?? new Set<string>();
+      for (const id of ids ?? []) connus.add(id);
+      enfantsParSlot.set(slotId, connus);
+    };
+
+    for (const u of urgencesConfirmees ?? []) noter(u.slot_id, u.enfant_ids);
+    for (const l of lignesAcceptees ?? []) {
+      const demande = l.demandes_creneaux as unknown as { enfant_ids: string[] | null } | null;
+      noter(l.slot_id, demande?.enfant_ids ?? null);
+    }
+  }
+
+  const idsEnfantsAccueillis = [
+    ...new Set([...enfantsParSlot.values()].flatMap((s) => [...s])),
+  ];
+  const { data: enfantsAccueillis } = idsEnfantsAccueillis.length
+    ? await supabase.from("enfants").select("id, prenom").in("id", idsEnfantsAccueillis)
+    : { data: [] };
+
+  /** Le calendrier tel qu'il est lu. Les compteurs, eux, continuent de porter
+   *  sur tout le planning : filtrer l'affichage ne doit pas changer le nombre
+   *  de réservations d'une série. */
+  const slotsAffiches = (slots ?? []).filter((s) => {
+    if (section) return s.tranche_id === section;
+    if (enfant) return enfantsParSlot.get(s.id)?.has(enfant) ?? false;
+    return true;
+  });
 
   const slotsParId = new Map((slots ?? []).map((s) => [s.id, s]));
 
@@ -339,6 +396,50 @@ export default async function PlanningPage({
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-liams-navy">Mon calendrier</h2>
+
+        {/* Une crèche ouvre plusieurs sections aux mêmes heures : sans ce
+            filtre, une semaine se lit comme une pile. Un indépendant n'a pas de
+            sections mais quelques enfants, et c'est par eux qu'il se repère. */}
+        {(tranches.length > 1 || (enfantsAccueillis ?? []).length > 1) && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500">
+              {tranches.length > 1 ? "Voir la section" : "Voir l'enfant"}
+            </span>
+            {tranches.length > 1
+              ? tranches.map((t) => (
+                  <Link
+                    key={t.id}
+                    href={section === t.id ? "/planning" : `/planning?section=${t.id}`}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      section === t.id
+                        ? "bg-liams-navy text-white"
+                        : "border border-gray-300 text-gray-600 hover:border-liams-navy"
+                    }`}
+                  >
+                    {t.libelle || `${t.age_min_mois}–${t.age_max_mois} mois`}
+                  </Link>
+                ))
+              : (enfantsAccueillis ?? []).map((e) => (
+                  <Link
+                    key={e.id}
+                    href={enfant === e.id ? "/planning" : `/planning?enfant=${e.id}`}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      enfant === e.id
+                        ? "bg-liams-navy text-white"
+                        : "border border-gray-300 text-gray-600 hover:border-liams-navy"
+                    }`}
+                  >
+                    {e.prenom}
+                  </Link>
+                ))}
+            {(section || enfant) && (
+              <Link href="/planning" className="text-xs text-gray-500 underline">
+                Tout afficher
+              </Link>
+            )}
+          </div>
+        )}
+
         <p className="mb-3 text-xs text-gray-500">
           <span className="mr-3 inline-flex items-center gap-1">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-liams-teal" /> Régulier
@@ -357,12 +458,12 @@ export default async function PlanningPage({
         <WeekCalendar
           weekStart={weekStart}
           basePath="/planning"
-          slots={(slots ?? []) as CalendarSlot[]}
+          slots={slotsAffiches as CalendarSlot[]}
           editable
           addSlotAction={ajouterCreneau}
           tranches={tranches}
           slotFooters={Object.fromEntries(
-            (slots ?? []).map((slot) => {
+            slotsAffiches.map((slot) => {
               const restantes = restantesParSlot.get(slot.id) ?? slot.capacite ?? 1;
               const capacite = slot.capacite ?? 1;
               const complet = restantes === 0;
@@ -398,7 +499,7 @@ export default async function PlanningPage({
       <CreneauxAVenir
         lieuAccueilProfil={profilPro?.lieu_accueil}
         tranches={tranches}
-        creneaux={(slots ?? [])
+        creneaux={slotsAffiches
           .filter((s) => s.date >= todayISO())
           .slice(0, 60)
           .map((s) => ({
