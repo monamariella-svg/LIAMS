@@ -1,10 +1,19 @@
 "use client";
 
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
+import { EnregistreurVocal } from "./EnregistreurVocal";
 import { upsertPrompt, supprimerPrompt } from "./actions";
 import { promptsSugeres, NB_PROMPTS_MAX } from "@/lib/prompts";
 
-type Prompt = { id: string; question: string; reponse: string };
+const urlPubliqueVoix = (chemin: string) =>
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/professional-voix/${chemin}`;
+
+type Prompt = {
+  id: string;
+  question: string;
+  reponse: string | null;
+  audio_url?: string | null;
+};
 
 function PromptForm({
   prompt,
@@ -15,9 +24,24 @@ function PromptForm({
 }) {
   const questions = promptsSugeres(estEtablissement);
   const formRef = useRef<HTMLFormElement>(null);
+  // Le blob vit ici plutôt que dans un champ fichier : un enregistrement ne
+  // se dépose pas dans un <input type=file>, et le glisser au FormData juste
+  // avant l'envoi évite de téléverser un fichier que le formulaire pourrait
+  // ne jamais valider.
+  const [audio, setAudio] = useState<{ blob: Blob; duree: number } | null>(null);
+  const [audioRetire, setAudioRetire] = useState(false);
+
   const [state, formAction, pending] = useActionState(async (prevState: unknown, formData: FormData) => {
+    if (audio) {
+      formData.set("audio", audio.blob, "reponse.webm");
+      formData.set("audio_duree", String(audio.duree));
+    }
+    if (audioRetire) formData.set("audio_retirer", "1");
     const result = await upsertPrompt(prevState as never, formData);
-    if (result?.success && !prompt) formRef.current?.reset();
+    if (result?.success && !prompt) {
+      formRef.current?.reset();
+      setAudio(null);
+    }
     return result;
   }, undefined);
 
@@ -48,11 +72,20 @@ function PromptForm({
       </select>
       <textarea
         name="reponse"
-        required
         defaultValue={prompt?.reponse ?? ""}
-        placeholder="Votre réponse (courte)"
+        placeholder="Votre réponse écrite (facultative si vous répondez en voix)"
         rows={2}
         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+      />
+
+      <EnregistreurVocal
+        audioExistant={prompt?.audio_url ? urlPubliqueVoix(prompt.audio_url) : null}
+        onChange={(blob, duree) => {
+          setAudio(blob ? { blob, duree } : null);
+          // Effacer un enregistrement gardé, c'est en demander le retrait ;
+          // sans cela la colonne resterait remplie en base.
+          setAudioRetire(blob === null);
+        }}
       />
       <div className="flex items-center gap-3">
         <button

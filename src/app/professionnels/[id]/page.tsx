@@ -108,7 +108,13 @@ export default async function ProfessionnelPublicPage({
    *  puis de nouveau en grille sous les prompts. */
   type Bloc =
     | { type: "photo"; cle: string; url: string; legende: string | null }
-    | { type: "prompt"; cle: string; question: string; reponse: string };
+    | {
+        type: "prompt";
+        cle: string;
+        question: string;
+        reponse: string | null;
+        audio: string | null;
+      };
 
   const [photoPrincipale, ...autresPhotos] = lesPhotos;
   const blocs: Bloc[] = [];
@@ -123,6 +129,9 @@ export default async function ProfessionnelPublicPage({
         cle: `prompt-${prompt.id}`,
         question: prompt.question,
         reponse: prompt.reponse,
+        audio: prompt.audio_url
+          ? `${supabaseUrl}/storage/v1/object/public/professional-voix/${prompt.audio_url}`
+          : null,
       });
     }
     const photo = filePhotos.shift();
@@ -257,7 +266,15 @@ export default async function ProfessionnelPublicPage({
               <p className="text-xs font-medium uppercase tracking-wide text-liams-teal">
                 {bloc.question}
               </p>
-              <p className="mt-2 text-base text-liams-navy">{bloc.reponse}</p>
+              {/* La voix d'abord : c'est ce qu'on est venu entendre. Le texte,
+                  quand il accompagne un enregistrement, tient lieu de
+                  transcription pour qui ne peut pas écouter. */}
+              {bloc.audio && (
+                <audio controls preload="none" src={bloc.audio} className="mt-3 w-full" />
+              )}
+              {bloc.reponse && (
+                <p className="mt-2 text-base text-liams-navy">{bloc.reponse}</p>
+              )}
             </div>
           ) : (
             <figure key={bloc.cle} className="relative">

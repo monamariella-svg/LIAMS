@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { compteProfessionnelActif, requireUser } from "@/lib/auth";
 import { geocodeAdresse } from "@/lib/geocoding";
 import { sendEmail } from "@/lib/email";
 import { lienVers } from "@/lib/notify";
@@ -330,30 +330,89 @@ export async function upsertPrompt(
   const promptId = String(formData.get("prompt_id") ?? "");
   const question = String(formData.get("question") ?? "").trim();
   const reponse = String(formData.get("reponse") ?? "").trim();
+  const audio = formData.get("audio") as File | null;
+  const dureeAudio = Number(formData.get("audio_duree") ?? 0) || 0;
+  const audioARetirer = formData.get("audio_retirer") === "1";
+  const aUnAudio = Boolean(audio && audio.size > 0);
 
-  if (!question || !reponse) return { error: "Choisissez une question et rédigez une réponse." };
+  if (!question) return { error: "Choisissez une question." };
+
+  // La carte doit dire quelque chose : un texte, une voix, ou les deux. Même
+  // règle qu'en base depuis la 0046, énoncée ici en français — la contrainte
+  // Postgres, elle, ne sait refuser qu'en anglais et en jargon.
+  //
+  // Ce qu'il faut peser est l'état d'après, non celui du formulaire : effacer
+  // le texte d'une carte qui n'a que du texte doit être refusé, alors même
+  // que rien n'est dit de l'audio. D'où la relecture de la ligne existante.
+  let audioApres = aUnAudio;
+  if (!aUnAudio && !audioARetirer && promptId) {
+    const { data: existant } = await supabase
+      .from("professional_prompts")
+      .select("audio_url")
+      .eq("id", promptId)
+      .maybeSingle();
+    audioApres = Boolean(existant?.audio_url);
+  }
+  if (!reponse && !audioApres) {
+    return { error: "Répondez par écrit, ou enregistrez une réponse vocale." };
+  }
+
+  // Le compte de la structure, pas celui de la salariée : le dossier de
+  // stockage porte l'identifiant du professionnel, et les règles de la 0046
+  // le vérifient.
+  const { comptePro } = await compteProfessionnelActif(supabase, user.id);
+
+  let audioUrl: string | null | undefined;
+  let audioDuree: number | null | undefined;
+
+  if (aUnAudio) {
+    // L'extension suit le type que le navigateur a produit : Safari
+    // enregistre en mp4, Chrome en webm, et servir un fichier mal nommé le
+    // rendrait illisible chez l'autre.
+    const extension = (audio as File).type.includes("mp4") ? "m4a" : "webm";
+    const chemin = `${comptePro}/${Date.now()}.${extension}`;
+    const { error: erreurUpload } = await supabase.storage
+      .from("professional-voix")
+      .upload(chemin, audio as File, { contentType: (audio as File).type });
+    if (erreurUpload) return { error: erreurUpload.message };
+    audioUrl = chemin;
+    audioDuree = Math.min(90, Math.max(1, Math.round(dureeAudio)));
+  } else if (audioARetirer) {
+    audioUrl = null;
+    audioDuree = null;
+  }
 
   if (promptId) {
     const { error } = await supabase
       .from("professional_prompts")
-      .update({ question, reponse })
+      .update({
+        question,
+        reponse: reponse || null,
+        // `undefined` laisse la colonne tranquille : on ne touche a l audio
+        // que si l on en a depose un, ou demande le retrait.
+        ...(audioUrl !== undefined && { audio_url: audioUrl, audio_duree_s: audioDuree }),
+      })
       .eq("id", promptId)
-      .eq("professional_id", user.id);
+      .eq("professional_id", comptePro);
     if (error) return { error: error.message };
   } else {
     const { count } = await supabase
       .from("professional_prompts")
       .select("id", { count: "exact", head: true })
-      .eq("professional_id", user.id);
+      .eq("professional_id", comptePro);
 
     const { error } = await supabase.from("professional_prompts").insert({
-      professional_id: user.id,
+      professional_id: comptePro,
       question,
-      reponse,
+      reponse: reponse || null,
+      audio_url: audioUrl ?? null,
+      audio_duree_s: audioDuree ?? null,
       ordre: count ?? 0,
     });
     if (error) return { error: error.message };
   }
+
+  revalidatePath(`/professionnels/${comptePro}`);
 
   revalidatePath("/profil/professionnel");
   return { success: true };
