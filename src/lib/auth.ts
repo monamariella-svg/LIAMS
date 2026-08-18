@@ -172,3 +172,92 @@ export async function requireUserParmi(roles: Array<"parent" | "professionnel" |
 
   return { supabase, user, role };
 }
+
+/** Le foyer au nom duquel une session parent travaille.
+ *
+ * Même partage que du côté professionnel, pour une autre raison : un enfant a
+ * deux parents, et le modèle n'en connaissait qu'un. Ce qui désigne l'enfant —
+ * `parent_id` sur `enfants`, et tout ce qui pend dessous — vise donc
+ * `compteFoyer`, tandis que ce qui désigne la personne — une garde qu'elle
+ * organise, un message qu'elle envoie — reste sur `user.id`.
+ *
+ * La différence avec un établissement tient là : deux salariées font le même
+ * travail et voient le même calendrier ; deux parents séparés ne se doivent
+ * pas cette transparence. D'où les deux drapeaux de partage, réglés chacun de
+ * son côté. C'est la ligne posée par la 0047 en base.
+ */
+export type Foyer = {
+  /** Le compte qui porte les enfants : le parent principal, ou soi-même. */
+  compteFoyer: string;
+  /** Faux pour un second parent rattaché. Rattacher et retirer lui sont
+   *  fermés : une séparation se décide rarement à deux. */
+  estPrincipal: boolean;
+  /** L'autre parent, s'il y en a un. */
+  autreParent: string | null;
+  /** Où en est le rattachement. Un lien demandé n'ouvre rien : tant qu'il n'est
+   *  pas accepté, `compteFoyer` reste soi-même et `autrePartage` reste faux. */
+  statut: "en_attente" | "accepte" | null;
+  /** Est-ce que je montre mes gardes à l'autre. */
+  jePartage: boolean;
+  /** Est-ce que l'autre me montre les siennes. */
+  autrePartage: boolean;
+  /** Qui a l'enfant les semaines paires (ISO), quand la garde alterne. */
+  gardeSemainesPaires: string | null;
+};
+
+export async function foyerParent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<Foyer> {
+  // Une seule ligne peut me concerner : `attacher_second_parent()` refuse un
+  // compte déjà engagé ailleurs, dans un sens comme dans l'autre. On lit tout
+  // de même en liste plutôt qu'en `maybeSingle()` : cette lecture décide de
+  // quels enfants s'affichent, et la faire échouer sur une ligne en trop
+  // fermerait le profil entier au lieu d'en montrer l'essentiel.
+  const { data } = await supabase
+    .from("co_parents")
+    // Chaîne littérale d'un seul tenant : concaténée, PostgREST ne sait plus
+    // en déduire le type des colonnes et rend un tableau d'erreurs.
+    .select("parent_principal_id, parent_secondaire_id, statut, garde_semaines_paires, principal_partage_planning, secondaire_partage_planning")
+    .or(`parent_principal_id.eq.${userId},parent_secondaire_id.eq.${userId}`)
+    .order("created_at")
+    .limit(1);
+
+  const lien = data?.[0];
+
+  if (!lien) {
+    return {
+      compteFoyer: userId,
+      estPrincipal: true,
+      autreParent: null,
+      statut: null,
+      jePartage: true,
+      autrePartage: false,
+      gardeSemainesPaires: null,
+    };
+  }
+
+  const estPrincipal = lien.parent_principal_id === userId;
+  const statut = lien.statut as "en_attente" | "accepte";
+  const accepte = statut === "accepte";
+
+  return {
+    // Tant que l'autre n'a pas répondu, on travaille pour soi seul. C'est la
+    // règle en base depuis la 0047 — `foyers_pilotes()` ignore une demande en
+    // attente — et la redire ici évite d'afficher une fratrie que la requête
+    // suivante refuserait de toute façon.
+    compteFoyer: accepte ? lien.parent_principal_id : userId,
+    estPrincipal,
+    // L'autre partie du lien, quel que soit son état : l'écran doit pouvoir
+    // dire « invitation envoyée » aussi bien que « rattaché ».
+    autreParent: estPrincipal ? lien.parent_secondaire_id : lien.parent_principal_id,
+    statut,
+    jePartage: estPrincipal
+      ? lien.principal_partage_planning
+      : lien.secondaire_partage_planning,
+    autrePartage:
+      accepte &&
+      (estPrincipal ? lien.secondaire_partage_planning : lien.principal_partage_planning),
+    gardeSemainesPaires: lien.garde_semaines_paires,
+  };
+}

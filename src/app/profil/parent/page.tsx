@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { computeParentProgress } from "@/lib/progress";
 import { NavigationBas } from "@/components/NavigationBas";
 import { BarreProgression } from "@/components/BarreProgression";
@@ -10,9 +10,15 @@ import { ModifierEnfantForm, type EnfantModifiable } from "./ModifierEnfantForm"
 import { FicheSanteForm } from "./FicheSanteForm";
 import { ProfilXtraForm } from "./ProfilXtraForm";
 import { SupprimerEnfantButton } from "./SupprimerEnfantButton";
+import { SecondParentManager, type SecondParent } from "./SecondParentManager";
 
 export default async function ProfilParentPage() {
   const { supabase, user } = await requireUser("parent");
+
+  // Les enfants pendent au compte du foyer, l'adresse et l'identité à la
+  // personne : un père séparé voit les mêmes enfants que la mère, sans pour
+  // autant habiter chez elle.
+  const foyer = await foyerParent(supabase, user.id);
 
   const [
     { data: parentProfile },
@@ -24,7 +30,7 @@ export default async function ProfilParentPage() {
       supabase
         .from("enfants")
         .select("*, enfant_fiche_sante(*), enfant_profil_xtra(*)")
-        .eq("parent_id", user.id)
+        .eq("parent_id", foyer.compteFoyer)
         .order("created_at"),
       supabase
         .from("identites")
@@ -37,6 +43,33 @@ export default async function ProfilParentPage() {
         .eq("user_id", user.id)
         .maybeSingle(),
     ]);
+
+  let second: SecondParent | null = null;
+  if (foyer.autreParent) {
+    // Le nom seulement : depuis la 0047, c'est tout ce qu'un parent lit de
+    // l'autre. Un compte tout juste créé n'en a pas encore, et l'écran le dit
+    // plutôt que d'afficher une ligne vide qu'on ne sait pas lire.
+    const { data: identiteAutre } = await supabase
+      .from("identites")
+      .select("prenom, nom")
+      .eq("user_id", foyer.autreParent)
+      .maybeSingle();
+
+    second = {
+      nom:
+        [identiteAutre?.prenom, identiteAutre?.nom].filter(Boolean).join(" ") || null,
+      jeSuisPrincipal: foyer.estPrincipal,
+      statut: foyer.statut ?? "en_attente",
+      jePartage: foyer.jePartage,
+      autrePartage: foyer.autrePartage,
+      gardePaires:
+        foyer.gardeSemainesPaires === null
+          ? null
+          : foyer.gardeSemainesPaires === user.id
+            ? "moi"
+            : "autre",
+    };
+  }
 
   const { pourcentage, manquants } = computeParentProgress({
     identiteComplete: Boolean(identite?.prenom && identite?.nom),
@@ -59,6 +92,12 @@ export default async function ProfilParentPage() {
       />
 
       <ParentProfileForm adresse={parentProfile?.adresse ?? ""} />
+
+      {/* Avant la liste des enfants, et non après : c'est le rattachement qui
+          décide de quels enfants cette page parle. Un parent qui vient
+          d'accepter une invitation doit trouver la réponse à « pourquoi cette
+          fratrie » au-dessus d'elle, pas en bas de page. */}
+      <SecondParentManager second={second} />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-liams-navy">Mes enfants</h2>

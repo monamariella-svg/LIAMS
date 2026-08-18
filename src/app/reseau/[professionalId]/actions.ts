@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
 import { journaliser } from "@/lib/journal";
 import { disponibiliteCreneau } from "@/lib/urgence";
@@ -21,10 +21,14 @@ async function enfantsRetenus(
   parentId: string,
   formData: FormData,
 ): Promise<string[]> {
+  // Les enfants du foyer, non ceux du compte : depuis la 0047 un second parent
+  // réserve pour la même fratrie, alors que la réservation reste à son nom.
+  const { compteFoyer } = await foyerParent(supabase, parentId);
+
   const { data: enfants } = await supabase
     .from("enfants")
     .select("id")
-    .eq("parent_id", parentId);
+    .eq("parent_id", compteFoyer);
 
   const siens = new Set((enfants ?? []).map((e) => e.id));
   const demandes = formData.getAll("enfant_ids").map(String).filter((id) => siens.has(id));

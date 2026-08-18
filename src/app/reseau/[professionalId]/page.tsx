@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { NavigationBas } from "@/components/NavigationBas";
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { isoWeekday, startOfWeek, todayISO } from "@/lib/calendar";
 import { disponibiliteCreneau } from "@/lib/urgence";
 import { PlanningReservable, type CreneauReservable } from "./PlanningReservable";
@@ -20,6 +20,7 @@ export default async function PlanningProfessionnelPage({
   const typeAccueil =
     type === "longue_duree" || type === "ponctuel" ? type : undefined;
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
   const weekStart = startOfWeek(week || todayISO());
 
   const { data: reseau } = await supabase
@@ -73,7 +74,7 @@ export default async function PlanningProfessionnelPage({
     supabase
       .from("enfants")
       .select("id, prenom")
-      .eq("parent_id", user.id)
+      .eq("parent_id", compteFoyer)
       .order("created_at"),
   ]);
 

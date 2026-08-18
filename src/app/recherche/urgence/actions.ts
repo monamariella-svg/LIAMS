@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { notifierUtilisateur, lienVers } from "@/lib/notify";
 import { disponibiliteCreneau } from "@/lib/urgence";
 
@@ -26,10 +26,14 @@ export async function demanderGardeUrgente(
     return { error: "Choisissez au moins un créneau." };
   }
 
+  // Ceux du foyer, non les siens : un second parent réserve pour les mêmes
+  // enfants, et la garde qu'il organise reste enregistrée à son nom.
+  const { compteFoyer } = await foyerParent(supabase, user.id);
+
   const { data: mesEnfants } = await supabase
     .from("enfants")
     .select("id")
-    .eq("parent_id", user.id);
+    .eq("parent_id", compteFoyer);
   const siens = new Set((mesEnfants ?? []).map((e) => e.id));
   const enfantsDemandes = formData
     .getAll("enfant_ids")

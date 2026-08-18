@@ -13,6 +13,7 @@ import {
   type CritereRecherche,
 } from "@/lib/matching";
 import { distanceKm } from "@/lib/geo";
+import { foyerParent } from "@/lib/auth";
 import { WeekCalendar, type CalendarSlot } from "@/components/WeekCalendar";
 import { PhotoProfil } from "@/components/PhotoProfil";
 import { BadgeIcone } from "@/components/BadgeIcone";
@@ -33,9 +34,11 @@ function chevauche(aDebut: string, aFin: string, bDebut: string, bFin: string) {
 
 /** Le planning du parent : le même calendrier hebdomadaire que le
  * professionnel, mais pour saisir ses besoins de garde (ponctuels ou
- * récurrents). Trois statuts y cohabitent : garde confirmée par un
- * professionnel (teal), demande en attente de validation (orange), et besoin
- * pour lequel aucun professionnel n'est encore trouvé (gris). */
+ * récurrents). Quatre statuts y cohabitent : garde confirmée par un
+ * professionnel (teal), demande en attente de validation (orange), besoin
+ * pour lequel aucun professionnel n'est encore trouvé (gris), et — depuis la
+ * 0047 — garde organisée par l'autre parent quand il la montre (gris pointillé,
+ * qu'on lit sans y toucher). */
 export async function PlanningParent({
   supabase,
   userId,
@@ -179,11 +182,15 @@ export async function PlanningParent({
     });
   }
 
+  // Les enfants sont ceux du foyer : un second parent rattaché voit la même
+  // fratrie, tandis que les gardes lues plus haut restent les siennes.
+  const { compteFoyer, autreParent, autrePartage } = await foyerParent(supabase, userId);
+
   // Prénoms des enfants réservés, pour proposer de n'en retirer qu'un.
   const { data: mesEnfants } = await supabase
     .from("enfants")
     .select("id, prenom, date_naissance")
-    .eq("parent_id", userId);
+    .eq("parent_id", compteFoyer);
   const prenomParEnfant = new Map((mesEnfants ?? []).map((e) => [e.id, e.prenom]));
 
   /** Les enfants pour qui l'on cherche.
@@ -315,6 +322,55 @@ export async function PlanningParent({
             Voir le pro
           </Link>
         </div>
+      );
+    }
+  }
+
+  // 1 ter. Les gardes de l'autre parent, quand il les montre.
+  //
+  //    En gris et sans bouton : elles ne se modifient pas d'ici, et la règle
+  //    en base le refuserait de toute façon. Ce qu'un parent cherche à savoir
+  //    n'est pas « puis-je annuler » mais « l'enfant est-il gardé mardi » —
+  //    deux parents séparés qui se répondent cela par messages y passent
+  //    leurs soirées, et se trompent.
+  //
+  //    Seules les gardes arrêtées apparaissent, non les demandes en cours :
+  //    une garde que l'autre parent n'a pas encore obtenue n'est pas une
+  //    information sur laquelle on organise sa semaine.
+  if (autreParent && autrePartage) {
+    const [{ data: gardesAutre }, { data: demandesAutre }] = await Promise.all([
+      supabase
+        .from("urgent_bookings")
+        .select("id, slot:availability_slots(id, date, heure_debut, heure_fin)")
+        .eq("parent_id", autreParent)
+        .eq("statut", "confirme"),
+      supabase
+        .from("demandes_creneaux")
+        .select("id")
+        .eq("parent_id", autreParent)
+        .eq("statut", "traitee"),
+    ]);
+
+    const { data: lignesAutre } = (demandesAutre ?? []).length
+      ? await supabase
+          .from("demande_creneau_lignes")
+          .select("slot:availability_slots(id, date, heure_debut, heure_fin)")
+          .in("demande_id", (demandesAutre ?? []).map((d) => d.id))
+          .eq("statut", "accepte")
+      : { data: [] };
+
+    const creneauxAutre = [...(gardesAutre ?? []), ...(lignesAutre ?? [])]
+      .map((ligne) => ligne.slot as unknown as SlotJoint | null)
+      .filter((s): s is SlotJoint => s !== null);
+
+    for (const slot of creneauxAutre) {
+      // Une garde déjà à l'écran est la même garde : on ne la double pas.
+      if (slots.some((s) => s.id === slot.id)) continue;
+      slots.push({ ...slot, statut: "autre_parent" });
+      footers[slot.id] = (
+        <span className="text-[10px] text-gray-600">
+          Organisée par l&apos;autre parent
+        </span>
       );
     }
   }
@@ -798,6 +854,7 @@ export async function PlanningParent({
             libre: "Confirmée",
             libre_urgence: "En attente",
             occupe: "Sans professionnel",
+            autre_parent: "Chez l'autre parent",
           }}
           slotFooters={footers}
         />

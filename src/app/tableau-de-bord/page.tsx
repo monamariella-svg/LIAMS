@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { compteProfessionnelActif } from "@/lib/auth";
+import { compteProfessionnelActif, foyerParent } from "@/lib/auth";
 import { computeParentProgress, computeProfessionalProgress } from "@/lib/progress";
 import { TuileNavigation } from "@/components/TuileNavigation";
 
@@ -14,6 +14,11 @@ async function calculerAvancement(
   role: string | undefined,
 ): Promise<number | null> {
   if (role === "parent") {
+    // L'avancement se mesure sur le foyer pour ce qui touche l'enfant, sur la
+    // personne pour son identité et son adresse : un second parent rattaché
+    // n'a pas à recréer la fratrie pour voir sa barre avancer.
+    const { compteFoyer } = await foyerParent(supabase, userId);
+
     const [
       { data: parentProfile },
       { data: enfants },
@@ -24,7 +29,7 @@ async function calculerAvancement(
       supabase
         .from("enfants")
         .select("id, enfant_fiche_sante(enfant_id)")
-        .eq("parent_id", userId),
+        .eq("parent_id", compteFoyer),
       supabase.from("identites").select("prenom, nom").eq("user_id", userId).maybeSingle(),
       supabase.from("coordonnees").select("telephone").eq("user_id", userId).maybeSingle(),
     ]);

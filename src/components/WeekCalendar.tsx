@@ -13,19 +13,23 @@ export type CalendarSlot = {
   date: string;
   heure_debut: string;
   heure_fin: string;
-  statut: "libre" | "libre_urgence" | "occupe";
+  statut: "libre" | "libre_urgence" | "occupe" | "autre_parent";
 };
 
 const STATUT_STYLES: Record<string, string> = {
   libre: "bg-liams-teal/15 border-liams-teal text-liams-teal",
   libre_urgence: "bg-liams-orange/15 border-liams-orange text-liams-orange",
   occupe: "bg-gray-100 border-gray-300 text-gray-500",
+  // La garde de l'autre parent : présente, lisible, mais visiblement pas la
+  // sienne — on ne la modifie pas d'ici, et la règle en base le refuserait.
+  autre_parent: "bg-gray-50 border-dashed border-gray-400 text-gray-500",
 };
 
 const STATUT_LABELS: Record<string, string> = {
   libre: "Régulier",
   libre_urgence: "Urgence",
   occupe: "Occupé",
+  autre_parent: "Chez l'autre parent",
 };
 
 export function WeekCalendar({

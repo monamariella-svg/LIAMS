@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { NavigationBas } from "@/components/NavigationBas";
 import { distanceKm } from "@/lib/geo";
 import { disponibiliteCreneau } from "@/lib/urgence";
@@ -15,6 +15,8 @@ const BADGES_HORS_RESEAU = ["nounou_extra", "super_experience"];
 export default async function RechercheUrgencePage() {
   const { supabase, user } = await requireUser("parent");
 
+  const { compteFoyer } = await foyerParent(supabase, user.id);
+
   const maintenant = new Date();
   const aujourdHui = maintenant.toISOString().slice(0, 10);
   const demain = new Date(maintenant.getTime() + 86_400_000).toISOString().slice(0, 10);
@@ -25,7 +27,11 @@ export default async function RechercheUrgencePage() {
     { data: reseau },
     { data: creneaux },
   ] = await Promise.all([
-    supabase.from("enfants").select("id, prenom").eq("parent_id", user.id).order("created_at"),
+    supabase
+      .from("enfants")
+      .select("id, prenom")
+      .eq("parent_id", compteFoyer)
+      .order("created_at"),
     supabase
       .from("parent_profiles")
       .select("adresse, latitude, longitude")

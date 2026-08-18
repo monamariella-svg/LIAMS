@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { foyerParent, requireUser } from "@/lib/auth";
 import { geocodeAdresse } from "@/lib/geocoding";
+import { notifierUtilisateur, lienVers } from "@/lib/notify";
 
 export type ProfilFormState =
   | { error?: string; success?: boolean; message?: string }
@@ -84,13 +85,14 @@ export async function ajouterEnfant(
   formData: FormData,
 ): Promise<ProfilFormState> {
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
 
   const lu = lireChampsEnfant(formData);
   if ("error" in lu) return { error: lu.error };
   const { prenom, dateNaissance, besoinsLibre, tags } = lu.champs;
 
   const { error } = await supabase.from("enfants").insert({
-    parent_id: user.id,
+    parent_id: compteFoyer,
     prenom,
     date_naissance: dateNaissance,
     besoins_particuliers_libre: besoinsLibre,
@@ -116,6 +118,7 @@ export async function modifierEnfant(
   formData: FormData,
 ): Promise<ProfilFormState> {
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
 
   const enfantId = String(formData.get("enfant_id") ?? "");
   if (!enfantId) return { error: "Enfant introuvable." };
@@ -133,9 +136,9 @@ export async function modifierEnfant(
       besoins_particuliers_tags: tags,
     })
     .eq("id", enfantId)
-    // Le parent ne corrige que les siens. La règle en base le refuserait de
-    // toute façon ; la doubler ici évite de renvoyer un refus de policy.
-    .eq("parent_id", user.id);
+    // Le parent ne corrige que ceux de son foyer. La règle en base le
+    // refuserait de toute façon ; la doubler ici évite un refus de policy.
+    .eq("parent_id", compteFoyer);
 
   if (error) return { error: error.message };
 
@@ -147,8 +150,9 @@ export async function modifierEnfant(
 
 export async function supprimerEnfant(formData: FormData) {
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
   const enfantId = String(formData.get("enfant_id") ?? "");
-  await supabase.from("enfants").delete().eq("id", enfantId).eq("parent_id", user.id);
+  await supabase.from("enfants").delete().eq("id", enfantId).eq("parent_id", compteFoyer);
   revalidatePath("/profil/parent");
 }
 
@@ -157,6 +161,7 @@ export async function updateFicheSante(
   formData: FormData,
 ): Promise<ProfilFormState> {
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
 
   const enfantId = String(formData.get("enfant_id") ?? "");
   if (!enfantId) return { error: "Enfant introuvable." };
@@ -165,7 +170,7 @@ export async function updateFicheSante(
     .from("enfants")
     .select("id")
     .eq("id", enfantId)
-    .eq("parent_id", user.id)
+    .eq("parent_id", compteFoyer)
     .single();
   if (!enfant) return { error: "Enfant introuvable." };
 
@@ -224,6 +229,7 @@ export async function updateProfilXtra(
   formData: FormData,
 ): Promise<ProfilFormState> {
   const { supabase, user } = await requireUser("parent");
+  const { compteFoyer } = await foyerParent(supabase, user.id);
 
   const enfantId = String(formData.get("enfant_id") ?? "");
   if (!enfantId) return { error: "Enfant introuvable." };
@@ -232,7 +238,7 @@ export async function updateProfilXtra(
     .from("enfants")
     .select("id")
     .eq("id", enfantId)
-    .eq("parent_id", user.id)
+    .eq("parent_id", compteFoyer)
     .single();
   if (!enfant) return { error: "Enfant introuvable." };
 
@@ -248,4 +254,265 @@ export async function updateProfilXtra(
 
   revalidatePath("/profil/parent");
   return { success: true };
+}
+
+// Les codes que renvoie `attacher_second_parent()`. Traduits ici plutôt qu'en
+// base, comme pour les comptes d'établissement : la fonction SQL dit ce qui
+// s'est passé, l'application décide comment le formuler.
+const MESSAGES_SECOND_PARENT: Record<string, string> = {
+  compte_introuvable:
+    "Aucun compte Liams à cette adresse. L'autre parent doit d'abord s'inscrire lui-même, avec cette adresse exactement.",
+  soi_meme: "C'est votre propre adresse.",
+  pas_parent:
+    "Ce compte est inscrit du côté professionnel. Pour être rattaché comme second parent, il doit être inscrit du côté famille.",
+  deja_un_second:
+    "Vous avez déjà invité un second parent. Retirez l'invitation avant d'en envoyer une autre.",
+  deja_ailleurs: "Ce compte est déjà rattaché à un autre foyer.",
+};
+
+/** Inviter l'autre parent de l'enfant.
+ *
+ * On ne crée pas son compte : il s'inscrit lui-même, avec son mot de passe. Ce
+ * que l'on invite est une adresse déjà inscrite — sans quoi le dossier d'un
+ * enfant s'ouvrirait à une adresse email que personne n'a jamais confirmée.
+ *
+ * Et on invite, on ne rattache pas : l'accès au dossier d'un enfant ne se
+ * donne pas à quelqu'un qui l'apprendrait en se connectant. Il reçoit un
+ * message, et il répond — comme un professionnel répond à une demande de
+ * réseau.
+ */
+export async function attacherSecondParent(
+  _prevState: ProfilFormState,
+  formData: FormData,
+): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Indiquez l'adresse email de l'autre parent." };
+
+  const { data, error } = await supabase.rpc("attacher_second_parent", { p_email: email });
+
+  if (error) return { error: error.message };
+  if (data !== "ok") {
+    return { error: MESSAGES_SECOND_PARENT[data as string] ?? "L'invitation a échoué." };
+  }
+
+  // Qui invite, sans quoi le message demanderait d'accepter on ne sait quoi.
+  const { data: moi } = await supabase
+    .from("identites")
+    .select("prenom, nom")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const monNom = [moi?.prenom, moi?.nom].filter(Boolean).join(" ");
+
+  const { data: invite } = await supabase
+    .from("users")
+    .select("id")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (invite?.id) {
+    await notifierUtilisateur(
+      supabase,
+      invite.id,
+      "Vous êtes invité comme second parent sur Liams",
+      `<p>${monNom || "Un parent"} vous propose de vous rattacher au dossier de
+        votre enfant sur Liams.</p>
+       <p>Accepter vous donnera votre propre accès à l'enfant, à sa fiche santé
+        et à ses besoins particuliers, avec votre mot de passe. Les gardes que
+        chacun organise ne se montrent que si vous le décidez, chacun de votre
+        côté.</p>
+       <p>Tant que vous n'avez pas répondu, rien n'est ouvert.</p>
+       ${lienVers("/profil/parent", "Répondre à l'invitation")}`,
+    );
+  }
+
+  revalidatePath("/profil/parent");
+  revalidatePath("/planning");
+  return {
+    success: true,
+    message: "Invitation envoyée. Le rattachement prendra effet quand l'autre parent l'aura acceptée.",
+  };
+}
+
+// Les codes que renvoie `repondre_rattachement()`.
+const MESSAGES_REPONSE: Record<string, string> = {
+  aucune_invitation: "Cette invitation n'existe plus.",
+  deja_ailleurs:
+    "Vous avez déjà rattaché un second parent à votre propre foyer. Retirez-le avant d'accepter celui-ci.",
+};
+
+/** Répondre à l'invitation reçue — et, plus tard, s'en retirer.
+ *
+ * Le même geste sert aux deux : refuser efface le lien, se retirer aussi. Rien
+ * n'enregistre le refus, et c'est voulu — une ligne refusée tiendrait le compte
+ * prisonnier, puisque seul le principal supprime (voir la 0047). L'autre parent
+ * pourra réinviter.
+ *
+ * Qu'une acceptation se reprenne n'est pas un détail : une séparation qui
+ * tourne mal est précisément le moment où l'on veut sortir sans demander la
+ * permission de l'autre.
+ */
+export async function repondreRattachement(
+  _prevState: ProfilFormState,
+  formData: FormData,
+): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const accepter = formData.get("reponse") === "accepter";
+
+  // Le destinataire est lu avant la réponse : refuser efface la ligne, et
+  // l'on ne saurait plus qui prévenir. Son état d'avant sert aussi à
+  // distinguer les deux refus possibles — décliner une invitation, ou quitter
+  // un rattachement qu'on avait accepté.
+  const { autreParent, statut } = await foyerParent(supabase, user.id);
+  const etaitAccepte = statut === "accepte";
+
+  const { data, error } = await supabase.rpc("repondre_rattachement", {
+    p_accepter: accepter,
+  });
+
+  if (error) return { error: error.message };
+  if (data !== "ok") {
+    return { error: MESSAGES_REPONSE[data as string] ?? "La réponse n'a pas pu être enregistrée." };
+  }
+
+  if (autreParent) {
+    await notifierUtilisateur(
+      supabase,
+      autreParent,
+      accepter
+        ? "Votre invitation a été acceptée"
+        : etaitAccepte
+          ? "L'autre parent s'est retiré du dossier"
+          : "Votre invitation n'a pas été acceptée",
+      accepter
+        ? `<p>L'autre parent a accepté le rattachement. Vous suivez désormais le
+            même enfant à deux.</p>
+           ${lienVers("/profil/parent", "Voir le profil")}`
+        : etaitAccepte
+          ? `<p>L'autre parent s'est retiré du dossier de votre enfant. Il n'y a
+              plus accès.</p>
+             <p>Ce qu'il avait organisé pendant le rattachement reste : les
+              gardes qu'il a réservées sont les siennes, et l'enfant garde son
+              dossier.</p>
+             ${lienVers("/profil/parent", "Voir le profil")}`
+          : `<p>L'autre parent n'a pas accepté le rattachement.</p>
+             <p>L'invitation a été retirée. Vous pouvez en envoyer une nouvelle
+              depuis votre profil.</p>
+             ${lienVers("/profil/parent", "Voir le profil")}`,
+    );
+  }
+
+  revalidatePath("/profil/parent");
+  revalidatePath("/planning");
+  revalidatePath("/tableau-de-bord");
+  return {
+    success: true,
+    message: accepter
+      ? "Rattachement accepté."
+      : etaitAccepte
+        ? "Vous vous êtes retiré du dossier."
+        : "Invitation refusée.",
+  };
+}
+
+/** Retirer le rattachement.
+ *
+ * Le compte principal seul le fait — c'est la règle posée en base. Ce qui a
+ * été organisé pendant le rattachement n'est pas défait pour autant : les
+ * gardes réservées par l'autre parent restent les siennes, et l'enfant garde
+ * son dossier. On coupe l'accès, on ne réécrit pas le passé.
+ */
+export async function detacherSecondParent(): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("parent");
+
+  const { error } = await supabase
+    .from("co_parents")
+    .delete()
+    .eq("parent_principal_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/profil/parent");
+  revalidatePath("/planning");
+  return { success: true, message: "Rattachement retiré." };
+}
+
+/** Montrer ou non ses gardes à l'autre parent.
+ *
+ * Chacun règle le sien, dans un sens seulement : l'un peut montrer sans que
+ * l'autre montre. La colonne dépend donc de qui parle, et le trigger de la
+ * 0047 refuse au second parent de toucher à celle du principal.
+ */
+export async function reglerPartagePlanning(
+  _prevState: ProfilFormState,
+  formData: FormData,
+): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("parent");
+  const { estPrincipal, autreParent, statut } = await foyerParent(supabase, user.id);
+
+  // Un rattachement demandé mais pas encore accepté ne règle rien : il n'y a
+  // pas encore deux plannings à séparer.
+  if (!autreParent || statut !== "accepte") {
+    return { error: "Aucun second parent rattaché." };
+  }
+
+  const partage = formData.get("partage") === "1";
+  const colonne = estPrincipal ? "principal_partage_planning" : "secondaire_partage_planning";
+
+  const { error } = await supabase
+    .from("co_parents")
+    .update({ [colonne]: partage })
+    .eq(estPrincipal ? "parent_principal_id" : "parent_secondaire_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/profil/parent");
+  revalidatePath("/planning");
+  return {
+    success: true,
+    message: partage
+      ? "L'autre parent voit vos gardes."
+      : "Vos gardes ne sont plus visibles de l'autre parent.",
+  };
+}
+
+/** Qui a l'enfant les semaines paires, quand la garde alterne.
+ *
+ * Facultatif : rien n'oblige deux parents à se partager les semaines, et
+ * beaucoup s'organisent autrement. Le renseigner sert à ce que le calendrier
+ * rappelle de qui est la semaine, non à interdire quoi que ce soit — un parent
+ * peut parfaitement organiser une garde pendant la semaine de l'autre, un
+ * rendez-vous médical ne demande pas la permission du calendrier.
+ */
+export async function reglerGardeAlternee(
+  _prevState: ProfilFormState,
+  formData: FormData,
+): Promise<ProfilFormState> {
+  const { supabase, user } = await requireUser("parent");
+  const { estPrincipal, autreParent, statut } = await foyerParent(supabase, user.id);
+
+  // Un rattachement demandé mais pas encore accepté ne règle rien : il n'y a
+  // pas encore deux plannings à séparer.
+  if (!autreParent || statut !== "accepte") {
+    return { error: "Aucun second parent rattaché." };
+  }
+  if (!estPrincipal) {
+    return { error: "Seul le compte principal règle l'alternance des semaines." };
+  }
+
+  const choix = String(formData.get("garde_semaines_paires") ?? "");
+  const valeur = choix === "moi" ? user.id : choix === "autre" ? autreParent : null;
+
+  const { error } = await supabase
+    .from("co_parents")
+    .update({ garde_semaines_paires: valeur })
+    .eq("parent_principal_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/profil/parent");
+  revalidatePath("/planning");
+  return { success: true, message: "Alternance enregistrée." };
 }
